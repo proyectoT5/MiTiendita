@@ -3,7 +3,7 @@ USE django_sqlserver;
 CREATE TABLE Usuarios (
     IdUsuario INT PRIMARY KEY,
     Nombre NVARCHAR(15),
-    Contraseña NVARCHAR(30),
+    ContraseÃ±a NVARCHAR(30),
     Rol NVARCHAR(15)
 );
 
