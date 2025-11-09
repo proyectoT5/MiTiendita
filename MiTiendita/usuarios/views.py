@@ -10,7 +10,7 @@ def login_sql_view(request):
 
         with connection.cursor() as cursor:
             cursor.execute(
-                "SELECT id, nombre FROM dbo.[Usuarios] WHERE Nombre = %s AND Contraseña = %s",
+                "SELECT IdUsuario, Nombre FROM dbo.[Usuarios] WHERE Nombre = %s AND Contraseña = %s",
                 [nombre, password]
             )
             user = cursor.fetchone()
