@@ -1,0 +1,12 @@
+Metadata-Version: 2.0
+Name: django-mssql
+Version: 1.8
+Summary: Django backend database support for MS SQL Server.
+Home-page: https://bitbucket.org/Manfre/django-mssql
+Author: Michael Manfre
+Author-email: mmanfre@gmail.com
+License: MIT
+
+Django MSSQL Database Backend
+
+
