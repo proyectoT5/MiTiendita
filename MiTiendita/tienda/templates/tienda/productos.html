@@ -49,12 +49,16 @@
                             <td>{{ producto.Cantidad }}</td>
                             <td>{{ producto.StockMinimo }}</td>
                             <td>
-                                <a href="#" class="btn btn-sm btn-warning">
-                                    <i class="fas fa-edit"></i>
-                                </a>
-                                <a href="#" class="btn btn-sm btn-danger">
+                                    <a href="{% url 'productos_editar' producto.Id_Producto %}" class="btn btn-sm btn-warning">
+                                        <i class="fas fa-edit"></i>
+                                    </a>                                
+                                <button type="button" class="btn btn-sm btn-danger" 
+                                        data-bs-toggle="modal" 
+                                        data-bs-target="#confirmDeleteModal"
+                                        data-product-id="{{ producto.Id_Producto }}"
+                                        data-product-name="{{ producto.Nombre }}">
                                     <i class="fas fa-trash"></i>
-                                </a>
+                                </button>
                             </td>
                         </tr>
                         {% empty %}
@@ -70,4 +74,71 @@
         </div>
     </div>
 
+
+    <div class="modal fade" id="confirmDeleteModal" tabindex="-1" aria-labelledby="modalLabel" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      
+      <div class="modal-header">
+        <h5 class="modal-title" id="modalLabel">
+          <i class="fas fa-exclamation-triangle text-danger"></i> ¿Estás seguro?
+        </h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      
+      <div class="modal-body">
+        ¿De verdad querés eliminar el producto: 
+        <strong><span id="modalProductName">...</span></strong>?
+        
+        <p class="text-danger small mt-2">Esta acción no se puede deshacer.</p>
+      </div>
+      
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
+          <i class="fas fa-times"></i> Cancelar
+        </button>
+        
+        <a href="#" id="modalDeleteButton" class="btn btn-danger">
+          <i class="fas fa-trash"></i> Sí, eliminar
+        </a>
+      </div>
+      
+    </div>
+  </div>
+</div>
+
+<script>
+// Cuando se termina de cargar la página...
+document.addEventListener('DOMContentLoaded', (event) => {
+    
+    // 1. Agarrá el Modal (la ventana)
+    var confirmDeleteModal = document.getElementById('confirmDeleteModal');
+    
+    // 2. Escuchá cuando alguien intente ABRIR el modal
+    confirmDeleteModal.addEventListener('show.bs.modal', function (event) {
+        
+        // 3. 'event.relatedTarget' es el botón (rojo) que apretaste
+        var button = event.relatedTarget;
+        
+        // 4. Jala los datos que pusimos en el botón
+        var productId = button.getAttribute('data-product-id');
+        var productName = button.getAttribute('data-product-name');
+        
+        // 5. Busca la etiqueta <span id="modalProductName">...</span>
+        //    y le pone el nombre del producto.
+        var modalBody = confirmDeleteModal.querySelector('#modalProductName');
+        modalBody.textContent = productName;
+        
+        // 6. Construye el link de borrado (ej: /productos/eliminar/5/)
+        var deleteUrl = `/productos/eliminar/${productId}/`;
+        
+        // 7. Agarra el botón rojo (el de "Sí, eliminar")
+        //    y le pone el link que acabamos de construir.
+        var modalDeleteButton = confirmDeleteModal.querySelector('#modalDeleteButton');
+        modalDeleteButton.setAttribute('href', deleteUrl);
+    });
+});
+</script>
+
 {% endblock %}
+

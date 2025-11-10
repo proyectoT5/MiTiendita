@@ -18,7 +18,13 @@ def login_requerido(view_func):
         return view_func(request, *args, **kwargs)
     return wrapper
 # -------------------------------
-
+def dictfetchall(cursor):
+    "Return all rows from a cursor as a dict"
+    columns = [col[0] for col in cursor.description]
+    return [
+        dict(zip(columns, row))
+        for row in cursor.fetchall()
+    ]
 
 @login_requerido
 def dashboard_view(request):
@@ -174,3 +180,191 @@ def productos_agregar_view(request):
     }
     # Asegúrate de que la ruta de la plantilla esté correcta
     return render(request, 'tienda/productos_agregar.html', context)
+
+@login_requerido
+def productos_eliminar_view(request, id_prod):
+    """
+    Recibe un ID de producto desde la URL y lo elimina.
+    """
+    
+    # ¡Importante! Esta es una acción destructiva.
+    # Más adelante te recomiendo poner un modal de confirmación.
+    
+    try:
+        with connection.cursor() as cursor:
+            # 1. Hacemos la consulta SQL DELETE
+            sql_query = "DELETE FROM Productos WHERE Id_Producto = %s"
+            cursor.execute(sql_query, [id_prod])
+            
+            # 2. Verificamos si se borró algo
+            if cursor.rowcount == 0:
+                # Esto pasa si el producto ya no existía
+                messages.error(request, f"No se encontró el producto con ID {id_prod}.")
+            else:
+                messages.success(request, f"¡Producto (ID {id_prod}) eliminado con éxito!")
+                
+    except Exception as e:
+        # --- ¡MANEJO DE ERROR CLAVE! ---
+        # Si el producto está en una Factura, SQL Server dará un
+        # error de "FOREIGN KEY constraint" y no te dejará borrarlo.
+        error_str = str(e)
+        if "FOREIGN KEY constraint" in error_str:
+            messages.error(request, f"¡Error! No se puede eliminar el producto (ID {id_prod}) porque ya está en una factura registrada.")
+        else:
+            messages.error(request, f"Error al eliminar el producto: {e}")
+
+    # 3. Al final, siempre regresamos a la lista de productos
+    return redirect('productos_lista')
+
+
+# --- ¡PEGUE 2: AGREGA ESTA NUEVA VISTA AL FINAL! ---
+@login_requerido
+def productos_editar_view(request, id_prod):
+    """
+    Esta vista hace 2 varas:
+    1. (GET) Muestra el formulario con los datos del producto.
+    2. (POST) Guarda los cambios en la base de datos.
+    """
+    
+    # --- Lógica para GUARDAR los cambios (POST) ---
+    if request.method == 'POST':
+        # 1. Jalamos todos los datos del formulario
+        prod_nombre = request.POST.get('Nombre')
+        prod_precio = request.POST.get('PrecioVenta')
+        prod_cantidad = request.POST.get('Cantidad')
+        prod_stock = request.POST.get('StockMinimo')
+        
+        # Jalamos la ruta de la foto que ya estaba (desde un input oculto)
+        ruta_db_para_foto = request.POST.get('rutaFotoActual') 
+
+        # 2. Revisamos si subió una foto NUEVA
+        if 'foto_del_producto' in request.FILES:
+            archivo_foto = request.FILES['foto_del_producto']
+            ruta_para_guardar = os.path.join(
+                settings.BASE_DIR, 'Imagenes', archivo_foto.name
+            )
+            try:
+                # Guardamos la foto nueva
+                with open(ruta_para_guardar, 'wb+') as destination:
+                    for chunk in archivo_foto.chunks():
+                        destination.write(chunk)
+                # Actualizamos la ruta para la BD
+                ruta_db_para_foto = f"/static/{archivo_foto.name}"
+            except Exception as e:
+                messages.error(request, f"Error al guardar la nueva imagen: {e}")
+
+        # 3. Creamos la consulta SQL UPDATE
+        sql_query = """
+            UPDATE Productos
+            SET Nombre = %s, 
+                PrecioVenta = %s, 
+                Cantidad = %s, 
+                StockMinimo = %s, 
+                rutaFoto = %s
+            WHERE Id_Producto = %s
+        """
+        params = [
+            prod_nombre, prod_precio, prod_cantidad, 
+            prod_stock, ruta_db_para_foto, id_prod # id_prod es el último
+        ]
+
+        try:
+            with connection.cursor() as cursor:
+                cursor.execute(sql_query, params)
+            
+            messages.success(request, f"¡Producto (ID: {id_prod}) actualizado con éxito!")
+            return redirect('productos_lista') # De vuelta a la lista
+        
+        except Exception as e:
+            messages.error(request, f"Error al actualizar el producto: {e}")
+
+    # --- Lógica para MOSTRAR el formulario (GET) ---
+    # (Si no es POST, hacemos esto)
+    try:
+        with connection.cursor() as cursor:
+            # 1. Buscamos el producto por su ID
+            sql_query = "SELECT * FROM Productos WHERE Id_Producto = %s"
+            cursor.execute(sql_query, [id_prod])
+            
+            # Usamos la función 'dictfetchall' que movimos arriba
+            producto_data = dictfetchall(cursor)
+            
+            if not producto_data:
+                messages.error(request, f"No se encontró el producto con ID {id_prod}.")
+                return redirect('productos_lista')
+            
+            producto = producto_data[0] # Agarramos el primer resultado
+
+    except Exception as e:
+        messages.error(request, f"Error al cargar el producto: {e}")
+        return redirect('productos_lista')
+
+    # 2. Mandamos los datos del producto al HTML
+    context = {
+        'nombre_usuario': request.session.get('user_nombre'),
+        'rol_usuario': request.session.get('user_rol'),
+        'producto': producto, # ¡La información para rellenar el form!
+    }
+    
+    # 3. Renderizamos la plantilla de EDICIÓN
+    return render(request, 'tienda/productos_editar.html', context)
+
+@login_requerido
+def clientes_view(request):
+    
+    # --- Lógica de Búsqueda (Filtro) ---
+    search_query = request.GET.get('q', '') # 'q' será el 'name' de tu barra de búsqueda
+    
+    try:
+        with connection.cursor() as cursor:
+            if search_query:
+                # Si hay búsqueda, buscamos por Nombre O Apellido
+                sql_query = """
+                    SELECT
+                        C.Id_Cliente, C.Nombre, C.Apellido,
+                        -- Esta función junta todos los teléfonos en un solo texto
+                        STRING_AGG(CT.numero_telefono_C, ', ') AS Telefonos
+                    FROM
+                        Clientes C
+                    LEFT JOIN
+                        ClienteTelefono CT ON C.Id_Cliente = CT.id_cliente
+                    WHERE
+                        C.Nombre LIKE %s OR C.Apellido LIKE %s
+                    GROUP BY
+                        C.Id_Cliente, C.Nombre, C.Apellido
+                """
+                # Buscamos en nombre y apellido
+                params = [f'%{search_query}%', f'%{search_query}%']
+                cursor.execute(sql_query, params)
+            else:
+                # Si no hay búsqueda, traemos todos los clientes
+                sql_query = """
+                    SELECT
+                        C.Id_Cliente, C.Nombre, C.Apellido,
+                        STRING_AGG(CT.numero_telefono_C, ', ') AS Telefonos
+                    FROM
+                        Clientes C
+                    LEFT JOIN
+                        ClienteTelefono CT ON C.Id_Cliente = CT.id_cliente
+                    GROUP BY
+                        C.Id_Cliente, C.Nombre, C.Apellido
+                """
+                cursor.execute(sql_query)
+            
+            # Usamos la "herramienta" global
+            clientes = dictfetchall(cursor)
+
+    except Exception as e:
+        clientes = []
+        messages.error(request, f"Error al consultar clientes: {e}")
+        print(f"Error al consultar clientes: {e}")
+
+    context = {
+        'nombre_usuario': request.session.get('user_nombre'),
+        'rol_usuario': request.session.get('user_rol'),
+        'clientes': clientes, # La lista de clientes
+        'search_query': search_query, # Para que el texto se quede en la barra
+    }
+    
+    # Usaremos una nueva plantilla llamada 'clientes.html'
+    return render(request, 'tienda/clientes.html', context)
