@@ -6,7 +6,7 @@
     
     <div class="d-flex justify-content-between align-items-center mb-3">
         <h1 class="h2">Gestión de Clientes</h1>
-        <a href="#" class="btn btn-primary">
+        <a href="{% url 'clientes_agregar' %}" class="btn btn-primary">
             <i class="fas fa-plus"></i> Agregar Nuevo Cliente
         </a>
     </div>
@@ -31,7 +31,10 @@
             
             {% if messages %}
                 {% for message in messages %}
-                    <div class="alert alert-{{ message.tags }}">{{ message }}</div>
+                    <div class="alert alert-{{ message.tags }} alert-dismissible fade show" role="alert">
+                        {{ message }}
+                        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                    </div>
                 {% endfor %}
             {% endif %}
 
@@ -53,14 +56,18 @@
                             <td>{{ cliente.Nombre }}</td>
                             <td>{{ cliente.Apellido }}</td>
                             <td>{{ cliente.Telefonos|default:"N/A" }}</td>
-                
                             <td>
                                 <a href="#" class="btn btn-sm btn-warning">
                                     <i class="fas fa-edit"></i>
                                 </a>
-                                <a href="#" class="btn btn-sm btn-danger">
+                                
+                                <button type="button" class="btn btn-sm btn-danger" 
+                                        data-bs-toggle="modal" 
+                                        data-bs-target="#confirmDeleteModal"
+                                        data-client-id="{{ cliente.Id_Cliente }}"
+                                        data-client-name="{{ cliente.Nombre }} {{ cliente.Apellido }}">
                                     <i class="fas fa-trash"></i>
-                                </a>
+                                </button>
                             </td>
                         </tr>
                         {% empty %}
@@ -76,4 +83,58 @@
         </div>
     </div>
 
+<div class="modal fade" id="confirmDeleteModal" tabindex="-1" aria-labelledby="modalLabel" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="modalLabel">
+          <i class="fas fa-exclamation-triangle text-danger"></i> ¿Estás seguro?
+        </h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        ¿De verdad querés eliminar al cliente: 
+        <strong><span id="modalClientName">...</span></strong>?
+        
+        <p class="text-danger small mt-2">Esta acción no se puede deshacer.</p>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
+          <i class="fas fa-times"></i> Cancelar
+        </button>
+        <a href="#" id="modalDeleteButton" class="btn btn-danger">
+          <i class="fas fa-trash"></i> Sí, eliminar
+        </a>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block content_scripts %}
+<script>
+document.addEventListener('DOMContentLoaded', (event) => {
+    
+    var confirmDeleteModal = document.getElementById('confirmDeleteModal');
+    
+    confirmDeleteModal.addEventListener('show.bs.modal', function (event) {
+        
+        var button = event.relatedTarget;
+        
+        // --- ¡CAMBIOS AQUÍ! (Usamos 'data-client-id') ---
+        var clientId = button.getAttribute('data-client-id');
+        var clientName = button.getAttribute('data-client-name');
+        
+        // --- ¡CAMBIOS AQUÍ! (Apuntamos a 'modalClientName') ---
+        var modalBody = confirmDeleteModal.querySelector('#modalClientName');
+        modalBody.textContent = clientName;
+        
+        // --- ¡CAMBIOS AQUÍ! (Construimos la URL de clientes) ---
+        var deleteUrl = `/clientes/eliminar/${clientId}/`;
+        
+        var modalDeleteButton = confirmDeleteModal.querySelector('#modalDeleteButton');
+        modalDeleteButton.setAttribute('href', deleteUrl);
+    });
+});
+</script>
 {% endblock %}

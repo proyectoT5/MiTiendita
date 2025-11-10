@@ -1,6 +1,6 @@
 # tienda/views.py
 from django.shortcuts import render, redirect
-from django.db import connection
+from django.db import connection,transaction
 from django.contrib import messages
 from django.conf import settings 
 import os
@@ -365,6 +365,79 @@ def clientes_view(request):
         'clientes': clientes, # La lista de clientes
         'search_query': search_query, # Para que el texto se quede en la barra
     }
-    
-    # Usaremos una nueva plantilla llamada 'clientes.html'
     return render(request, 'tienda/clientes.html', context)
+
+@login_requerido
+def clientes_agregar_view(request):
+    if request.method == 'POST':
+        cli_id = request.POST.get('Id_Cliente')
+        cli_nombre = request.POST.get('Nombre')
+        cli_apellido = request.POST.get('Apellido')
+        cli_tel = request.POST.get('numero_telefono_C')
+
+        try:
+            with transaction.atomic():
+                with connection.cursor() as cursor:
+                    # 🔹 Inserta el cliente
+                    sql_cliente = """
+                        INSERT INTO Clientes (Id_Cliente, Nombre, Apellido)
+                        VALUES (%s, %s, %s)
+                    """
+                    cursor.execute(sql_cliente, [cli_id, cli_nombre, cli_apellido])
+
+                    # 🔹 Inserta el teléfono si lo hay
+                    if cli_tel:
+                        cursor.execute("SELECT ISNULL(MAX(id_telefonoCli), 0) FROM ClienteTelefono")
+                        new_id_tel = cursor.fetchone()[0] + 1
+
+                        sql_telefono = """
+                            INSERT INTO ClienteTelefono (id_telefonoCli, id_cliente, numero_telefono_C)
+                            VALUES (%s, %s, %s)
+                        """
+                        cursor.execute(sql_telefono, [new_id_tel, cli_id, cli_tel])
+
+                messages.success(request, f"¡Cliente '{cli_nombre} {cli_apellido}' agregado con éxito!")
+                return redirect('clientes_lista')
+
+        except Exception as e:
+            messages.error(request, f"Error al agregar el cliente: {e}")
+
+    context = {
+        'nombre_usuario': request.session.get('user_nombre'),
+        'rol_usuario': request.session.get('user_rol'),
+    }
+    return render(request, 'tienda/clientes_agregar.html', context)
+
+@login_requerido
+def clientes_eliminar_view(request, id_cli):
+    """
+    Elimina un cliente y sus teléfonos asociados,
+    solo si no tiene facturas.
+    """
+    try:
+        # Usamos la transacción atómica de Django
+        with transaction.atomic():
+            with connection.cursor() as cursor:
+                
+                # 1. Primero, borramos los "hijos" (los teléfonos)
+                sql_telefonos = "DELETE FROM ClienteTelefono WHERE id_cliente = %s"
+                cursor.execute(sql_telefonos, [id_cli])
+                
+                # 2. Segundo, borramos el "padre" (el cliente)
+                sql_cliente = "DELETE FROM Clientes WHERE Id_Cliente = %s"
+                cursor.execute(sql_cliente, [id_cli])
+        
+        messages.success(request, f"¡Cliente (ID {id_cli}) eliminado con éxito!")
+    
+    except Exception as e:
+        # 3. ¡Manejo de Error!
+        #    Si el 'DELETE' del cliente falla (Paso 2),
+        #    es 99% seguro que es por una factura.
+        error_str = str(e)
+        if "FOREIGN KEY constraint" in error_str and "Factura" in error_str:
+            messages.error(request, f"¡Error! No se puede eliminar el cliente (ID {id_cli}) porque ya tiene facturas registradas.")
+        else:
+            messages.error(request, f"Error al eliminar el cliente: {e}")
+
+    # 4. Al final, siempre regresamos a la lista
+    return redirect('clientes_lista')

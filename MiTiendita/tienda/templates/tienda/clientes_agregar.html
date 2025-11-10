@@ -1,0 +1,66 @@
+{% extends 'tienda/base.html' %}
+
+{% block title %}Agregar Nuevo Cliente{% endblock %}
+
+{% block content %}
+    
+    <h1 class="h2 mb-4">Agregar Nuevo Cliente</h1>
+
+    {% if messages %}
+        {% for message in messages %}
+            <div class="alert alert-{{ message.tags }} alert-dismissible fade show" role="alert">
+                {{ message }}
+                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+            </div>
+        {% endfor %}
+    {% endif %}
+
+    <div class="card shadow-sm">
+        <div class="card-body">
+            
+            <form method="POST">
+                {% csrf_token %} 
+
+                <div class="row">
+                    <div class="col-md-6">
+                        <div class="mb-3">
+                            <label for="Id_Cliente" class="form-label">ID del Cliente (PK)</label>
+                            <input type="number" class="form-control" id="Id_Cliente" name="Id_Cliente" required>
+                        </div>
+                        
+                        <div class="mb-3">
+                            <label for="Nombre" class="form-label">Nombre</label>
+                            <input type="text" class="form-control" id="Nombre" name="Nombre" required>
+                        </div>
+
+                        <div class="mb-3">
+                            <label for="Apellido" class="form-label">Apellido</label>
+                            <input type="text" class="form-control" id="Apellido" name="Apellido" required>
+                        </div>
+                    </div>
+
+                    <div class="col-md-6">
+                        <div class="mb-3">
+                            <label for="numero_telefono_C" class="form-label">Teléfono </label>
+                            <input type="text" class="form-control" id="numero_telefono_C" name="numero_telefono_C" placeholder="Ej: 8888-8888">
+                            <small class="form-text text-muted">Para agregar más teléfonos, edite el cliente después de crearlo.</small>
+                        </div>
+                    </div>
+                </div>
+
+                <hr>
+
+                <div class="text-end">
+                    <a href="{% url 'clientes_lista' %}" class="btn btn-secondary">
+                        <i class="fas fa-times"></i> Cancelar
+                    </a>
+                    <button type="submit" class="btn btn-primary">
+                        <i class="fas fa-save"></i> Guardar Cliente
+                    </button>
+                </div>
+            </form>
+
+        </div>
+    </div>
+
+{% endblock %}
