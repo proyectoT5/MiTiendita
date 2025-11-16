@@ -10,20 +10,6 @@ urlpatterns = [
     path('productos/editar/<int:id_prod>/', views.productos_editar_view, name='productos_editar'),
     path('clientes/', views.clientes_view, name='clientes_lista'),
     path('clientes/agregar/', views.clientes_agregar_view, name='clientes_agregar'),
-
-]
-
-urlpatterns = [
-    path('', views.dashboard_view, name='dashboard'),
-    
-    # --- Rutas de Productos ---
-    path('productos/', views.productos_view, name='productos_lista'),
-    # ... (tus otras rutas de productos)
-    
-    # --- Rutas de Clientes ---
-    path('clientes/', views.clientes_view, name='clientes_lista'),
-    path('clientes/agregar/', views.clientes_agregar_view, name='clientes_agregar'),
-    
-    # --- ¡AGREGA ESTA NUEVA LÍNEA! ---
     path('clientes/eliminar/<int:id_cli>/', views.clientes_eliminar_view, name='clientes_eliminar'),
+
 ]
