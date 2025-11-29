@@ -1,0 +1,76 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="{% static 'bootstrap/css/bootstrap.min.css' %}">
+    <link rel="stylesheet" href="{% static 'fontawesome/css/all.min.css' %}">
+    <title>Iniciar Sesión - Mi Tiendita</title>
+    <style>
+        body {
+            /* Fondo con degradado tuani */
+            background: linear-gradient(135deg, #0d6efd 0%, #0dcaf0 100%);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            margin: 0;
+        }
+        .login-card {
+            width: 100%;
+            max-width: 400px;
+            padding: 2.5rem;
+            border-radius: 15px;
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.2);
+            background: white;
+            text-align: center;
+        }
+        .login-icon {
+            font-size: 4rem;
+            color: #0d6efd;
+            margin-bottom: 1rem;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="login-card">
+        <div class="login-icon">
+            <i class="fas fa-store"></i>
+        </div>
+
+        <h3 class="mb-4 fw-bold text-primary">Mi Tiendita</h3>
+        <p class="text-muted mb-4">Ingresá tus credenciales para entrar</p>
+        
+        <form method="POST" class="text-start">
+            {% csrf_token %}
+            <div class="mb-3">
+                <label for="username" class="form-label fw-bold">Usuario</label>
+                <div class="input-group">
+                    <span class="input-group-text"><i class="fas fa-user"></i></span>
+                    <input type="text" class="form-control" id="username" name="username" placeholder="Ej: Yoseling" required autofocus>
+                </div>
+            </div>
+            <div class="mb-4">
+                <label for="password" class="form-label fw-bold">Contraseña</label>
+                <div class="input-group">
+                    <span class="input-group-text"><i class="fas fa-lock"></i></span>
+                    <input type="password" class="form-control" id="password" name="password" placeholder="••••••" required>
+                </div>
+            </div>
+            <div class="d-grid">
+                <button type="submit" class="btn btn-primary btn-lg">
+                    <i class="fas fa-sign-in-alt me-2"></i> Entrar al Sistema
+                </button>
+            </div>
+        </form>
+        
+        <div class="mt-4 text-muted small">
+            &copy; 2025 Mi Tiendita S.A.
+        </div>
+    </div>
+
+    <script src="{% static 'bootstrap/js/bootstrap.bundle.min.js' %}"></script>
+</body>
+</html>

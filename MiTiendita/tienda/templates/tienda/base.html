@@ -1,76 +1,135 @@
 {% load static %}
 <!DOCTYPE html>
-<html lang="es">
+<html lang="es" data-bs-theme="light">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     
     <link rel="stylesheet" href="{% static 'bootstrap/css/bootstrap.min.css' %}">
     <link rel="stylesheet" href="{% static 'fontawesome/css/all.min.css' %}">
-    
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600&display=swap" rel="stylesheet">
+
     <title>{% block title %}Mi Tiendita{% endblock %}</title>
+    
+    <style>
+        body { font-family: 'Poppins', sans-serif; transition: background-color 0.3s, color 0.3s; }
+
+        /* --- MODO CLARO --- */
+        [data-bs-theme="light"] body { background-color: #f3f4f6; color: #212529; }
+        [data-bs-theme="light"] .navbar { background: linear-gradient(to right, #1e3c72, #2a5298); }
+        
+        /* --- MODO OSCURO (MEJORADO) --- */
+        [data-bs-theme="dark"] body { background-color: #121212; color: #e0e0e0; }
+        [data-bs-theme="dark"] .navbar { background: linear-gradient(to right, #0f2027, #203a43, #2c5364); border-bottom: 1px solid #444; }
+        [data-bs-theme="dark"] .card { background-color: #1e1e1e; border-color: #333; }
+        
+        /* Inputs más visibles en oscuro */
+        [data-bs-theme="dark"] .form-control, 
+        [data-bs-theme="dark"] .form-select { 
+            background-color: #2b2b2b; 
+            border-color: #555; 
+            color: #fff; 
+        }
+        [data-bs-theme="dark"] .form-control:focus { 
+            background-color: #333; 
+            border-color: #0d6efd; 
+            color: #fff; 
+        }
+        [data-bs-theme="dark"] .form-control::placeholder { color: #aaa; }
+        [data-bs-theme="dark"] .input-group-text { background-color: #333; border-color: #555; color: #fff; }
+
+        /* Tablas más legibles */
+        [data-bs-theme="dark"] .table { color: #e0e0e0; border-color: #444; }
+        [data-bs-theme="dark"] .table-hover tbody tr:hover { background-color: #333; color: #fff; }
+        
+        /* Comunes */
+        .navbar-brand { font-weight: 600; letter-spacing: 1px; }
+        .card { border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); }
+        .card-hover:hover { transform: translateY(-5px); box-shadow: 0 8px 15px rgba(0,0,0,0.1); }
+    </style>
 </head>
-<body class="bg-light">
+<body>
 
-    <nav class="navbar navbar-expand-lg navbar-dark bg-dark shadow-sm">
+    <div id="alert-container" class="position-fixed top-0 end-0 p-3" style="z-index: 9999; max-width: 400px; margin-top: 60px;">
+        {% if messages %}
+            {% for message in messages %}
+                <div class="alert alert-{{ message.tags }} alert-dismissible fade show shadow border-0 bg-white text-dark d-flex align-items-center mb-2">
+                    {% if message.tags == 'success' %} <i class="fas fa-check-circle text-success fs-4 me-3"></i>
+                    {% elif message.tags == 'error' %} <i class="fas fa-exclamation-circle text-danger fs-4 me-3"></i>
+                    {% else %} <i class="fas fa-info-circle text-primary fs-4 me-3"></i> {% endif %}
+                    <div class="small fw-bold">{{ message }}</div>
+                    <button type="button" class="btn-close ms-auto" data-bs-dismiss="alert"></button>
+                </div>
+            {% endfor %}
+        {% endif %}
+    </div>
+
+    <nav class="navbar navbar-expand-lg navbar-dark fixed-top">
         <div class="container-fluid">
-            <a class="navbar-brand" href="{% url 'dashboard' %}">
-                <i class="fas fa-store"></i> Mi Tiendita
-            </a>
-            
-            <div class="collapse navbar-collapse">
+            <a class="navbar-brand" href="{% url 'dashboard' %}"><i class="fas fa-store me-2"></i> Mi Tiendita</a>
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarMain"><span class="navbar-toggler-icon"></span></button>
+            <div class="collapse navbar-collapse" id="navbarMain">
                 <ul class="navbar-nav me-auto mb-2 mb-lg-0">
-                    <li class="nav-item">
-                        <a class="nav-link" href="{% url 'productos_lista' %}">
-                            <i class="fas fa-box-open"></i> Productos
-                        </a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link" href="{% url 'clientes_lista' %}">
-                            <i class="fas fa-users"></i> Clientes
-                        </a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link" href="#">
-                            <i class="fas fa-chart-bar"></i> Proveedores
-                        </a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link" href="#">
-                            <i class="fas fa-brain"></i> Predicción
-                        </a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link" href="#">
-                            <i class="fas fa-brain"></i> Reportes
-                        </a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link" href="#">
-                            <i class="fas fa-brain"></i> Facturacion
-                        </a>
-                    </li>
+                    <li class="nav-item"><a class="nav-link" href="{% url 'productos_lista' %}"><i class="fas fa-box-open"></i> Productos</a></li>
+                    <li class="nav-item"><a class="nav-link" href="{% url 'clientes_lista' %}"><i class="fas fa-users"></i> Clientes</a></li>
+                    <li class="nav-item"><a class="nav-link" href="{% url 'proveedores_lista' %}"><i class="fas fa-truck-loading"></i> Proveedores</a></li>
+                    <li class="nav-item"><a class="nav-link" href="{% url 'prediccion_view' %}"><i class="fas fa-brain"></i> Predicción</a></li>
+                    <li class="nav-item"><a class="nav-link" href="{% url 'reportes_view' %}"><i class="fas fa-chart-pie"></i> Reportes</a></li>
+                    <li class="nav-item ms-lg-3"><a class="nav-link btn btn-light text-primary px-3 fw-bold" href="{% url 'facturacion_view' %}"><i class="fas fa-cash-register"></i> FACTURAR</a></li>
+                    {% if request.session.user_rol == 'Admin' %}
+                        <li class="nav-item ms-lg-3"><a class="nav-link text-warning" href="{% url 'usuarios_lista' %}"><i class="fas fa-user-cog"></i> Usuarios</a></li>
+                        <li class="nav-item"><a class="nav-link text-info" href="{% url 'proveedor_producto_lista' %}"><i class="fas fa-tags"></i> Costos</a></li>
+                    {% endif %}
                 </ul>
-
-                <span class="navbar-text me-3">
-                    Hola, <strong>{{ nombre_usuario }}</strong> ({{ rol_usuario }})
-                </span>
-                <a href="{% url 'logout' %}" class="btn btn-outline-danger">
-                    <i class="fas fa-sign-out-alt"></i> Salir
-                </a>
+                <div class="d-flex align-items-center text-white">
+                    <button class="btn btn-outline-light btn-sm me-3 border-0" id="darkModeToggle" title="Modo Oscuro">
+                        <i class="fas fa-moon"></i>
+                    </button>
+                    <div class="me-3 text-end lh-1"><div class="fw-bold">{{ request.session.user_nombre }}</div><small class="text-white-50">{{ request.session.user_rol }}</small></div>
+                    <a href="{% url 'logout' %}" class="btn btn-danger btn-sm"><i class="fas fa-sign-out-alt"></i></a>
+                </div>
             </div>
         </div>
     </nav>
 
-    <div class="container mt-4">
-        {% block content %}
-        {% endblock %}
+    <div class="container" style="margin-top: 80px; margin-bottom: 40px;">
+        {% block content %}{% endblock %}
     </div>
 
-<script src="{% static 'bootstrap/js/bootstrap.bundle.min.js' %}"></script>
+    <script src="{% static 'bootstrap/js/bootstrap.bundle.min.js' %}"></script>
     
-{% block content_scripts %}
-{% endblock %}
+    <script>
+        // 1. Alertas
+        document.addEventListener('DOMContentLoaded', function() {
+            setTimeout(function() {
+                var container = document.getElementById('alert-container');
+                if (container) {
+                    var alerts = container.querySelectorAll('.alert');
+                    alerts.forEach(function(alert) { var bsAlert = new bootstrap.Alert(alert); bsAlert.close(); });
+                }
+            }, 3000);
+        });
 
+        // 2. Modo Oscuro
+        const toggleBtn = document.getElementById('darkModeToggle');
+        const htmlElement = document.documentElement;
+        const icon = toggleBtn.querySelector('i');
+        if (localStorage.getItem('theme') === 'dark') {
+            htmlElement.setAttribute('data-bs-theme', 'dark');
+            icon.classList.replace('fa-moon', 'fa-sun');
+        }
+        toggleBtn.addEventListener('click', () => {
+            if (htmlElement.getAttribute('data-bs-theme') === 'light') {
+                htmlElement.setAttribute('data-bs-theme', 'dark');
+                icon.classList.replace('fa-moon', 'fa-sun');
+                localStorage.setItem('theme', 'dark');
+            } else {
+                htmlElement.setAttribute('data-bs-theme', 'light');
+                icon.classList.replace('fa-sun', 'fa-moon');
+                localStorage.setItem('theme', 'light');
+            }
+        });
+    </script>
+    {% block content_scripts %}{% endblock %}
 </body>
 </html>

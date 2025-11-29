@@ -1,0 +1,159 @@
+{% extends 'tienda/base.html' %}
+{% block title %}Precios de Compra{% endblock %}
+
+{% block content %}
+    
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <h1 class="h2">Costos y Proveedores</h1>
+        <a href="{% url 'proveedor_producto_agregar' %}" class="btn btn-primary shadow-sm">
+            <i class="fas fa-link"></i> Asignar Nuevo
+        </a>
+    </div>
+
+    <div class="card shadow-sm mb-4 border-0">
+        <div class="card-body">
+            <form method="GET" class="row g-3 align-items-center">
+                <div class="col-md-6">
+                    <div class="input-group">
+                        <input type="text" class="form-control" placeholder="Buscar producto o proveedor..." name="q" value="{{ search_query }}">
+                        <button class="btn btn-outline-secondary" type="submit"><i class="fas fa-search"></i></button>
+                    </div>
+                </div>
+
+                <div class="col-md-3">
+                    <select name="orden" class="form-select" onchange="this.form.submit()">
+                        <option value="nombre" {% if orden_actual == 'nombre' %}selected{% endif %}>Orden: Nombre (A-Z)</option>
+                        <option value="precio_menor" {% if orden_actual == 'precio_menor' %}selected{% endif %}>Precio: Menor a Mayor</option>
+                        <option value="precio_mayor" {% if orden_actual == 'precio_mayor' %}selected{% endif %}>Precio: Mayor a Menor</option>
+                    </select>
+                </div>
+
+                <div class="col-md-3 text-end">
+                    <div class="form-check form-switch d-inline-block">
+                         <input class="form-check-input" type="checkbox" id="mostrar_desactivados" name="mostrar_desactivados" value="true" {% if mostrando_desactivados %}checked{% endif %} onchange="this.form.submit()"> 
+                         <label class="form-check-label" for="mostrar_desactivados">Mostrar Desactivados</label>
+                    </div>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <div class="card shadow-sm border-0">
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-striped table-hover align-middle mb-0">
+                    <thead class="table-dark">
+                        <tr>
+                            <th class="ps-3">Producto</th>
+                            <th>Proveedor</th>
+                            <th class="text-center">Cant.</th>
+                            <th>Costo Unitario</th>
+                            <th>Estado</th>
+                            <th class="text-end pe-3">Acciones</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for item in asignaciones %}
+                        <tr {% if not item.Activo %}class="opacity-50"{% endif %}>
+                            <td class="fw-bold ps-3">{{ item.NombreProducto }}</td>
+                            <td>{{ item.NombreProveedor }}</td>
+                            <td class="text-center">
+                                <span class="badge bg-secondary rounded-pill">{{ item.CantidadCompra }}</span>
+                            </td>
+                            <td class="text-success fw-bold">C$ {{ item.PrecioCompra|floatformat:2 }}</td>
+                            <td>
+                                {% if item.Activo %}
+                                    <span class="badge bg-success">Activo</span>
+                                {% else %}
+                                    <span class="badge bg-danger">Inactivo</span>
+                                {% endif %}
+                            </td>
+                            <td class="text-end pe-3">
+                                
+                                {% if item.Activo %}
+                                    <button type="button" class="btn btn-sm btn-success me-2" 
+                                            data-bs-toggle="modal" data-bs-target="#modalComprar"
+                                            data-prov="{{ item.Id_Proveedor }}" 
+                                            data-prod="{{ item.Id_Producto }}"
+                                            data-nombre="{{ item.NombreProducto }}"
+                                            data-factor="{{ item.CantidadCompra }}">
+                                        <i class="fas fa-dolly"></i>
+                                    </button>
+                                {% endif %}
+
+                                <a href="{% url 'proveedor_producto_editar' item.Id_Proveedor item.Id_Producto %}" 
+                                   class="btn btn-sm btn-warning shadow-sm me-1" title="Editar">
+                                    <i class="fas fa-edit"></i>
+                                </a>
+
+                                {% if item.Activo %}
+                                    <button type="button" class="btn btn-sm btn-danger shadow-sm" 
+                                            title="Desactivar"
+                                            onclick="if(confirm('¿Desactivar este costo?')) window.location.href='{% url 'proveedor_producto_eliminar' item.Id_Proveedor item.Id_Producto %}'">
+                                        <i class="fas fa-trash"></i>
+                                    </button>
+                                {% else %}
+                                    <a href="{% url 'proveedor_producto_reactivar' item.Id_Proveedor item.Id_Producto %}" 
+                                       class="btn btn-sm btn-success shadow-sm" title="Reactivar">
+                                        <i class="fas fa-check"></i>
+                                    </a>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% empty %}
+                        <tr><td colspan="6" class="text-center text-muted py-4">No hay costos registrados.</td></tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal fade" id="modalComprar" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header bg-success text-white">
+                    <h5 class="modal-title"><i class="fas fa-boxes me-2"></i>Abastecer Inventario</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <form method="POST" action="{% url 'registrar_compra' %}">
+                        {% csrf_token %}
+                        <input type="hidden" name="id_proveedor" id="modalIdProv">
+                        <input type="hidden" name="id_producto" id="modalIdProd">
+                        
+                        <p class="mb-3">Estás comprando: <strong id="modalNombreProd" class="text-primary"></strong></p>
+                        
+                        <div class="alert alert-info py-2 mb-3">
+                            <i class="fas fa-info-circle me-2"></i> Cada paquete trae: <strong id="modalFactor"></strong> unidades.
+                        </div>
+
+                        <div class="mb-3">
+                            <label class="form-label fw-bold">¿Cuántos paquetes/cajas compraste?</label>
+                            <input type="number" class="form-control form-control-lg text-center" name="cantidad_bultos" value="1" min="1" required>
+                        </div>
+
+                        <div class="d-grid">
+                            <button type="submit" class="btn btn-success btn-lg">Confirmar Compra</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+{% endblock %}
+
+{% block content_scripts %}
+<script>
+    var modalComprar = document.getElementById('modalComprar');
+    if (modalComprar) {
+        modalComprar.addEventListener('show.bs.modal', function (event) {
+            var btn = event.relatedTarget;
+            document.getElementById('modalIdProv').value = btn.getAttribute('data-prov');
+            document.getElementById('modalIdProd').value = btn.getAttribute('data-prod');
+            document.getElementById('modalNombreProd').innerText = btn.getAttribute('data-nombre');
+            document.getElementById('modalFactor').innerText = btn.getAttribute('data-factor');
+        });
+    }
+</script>
+{% endblock %}

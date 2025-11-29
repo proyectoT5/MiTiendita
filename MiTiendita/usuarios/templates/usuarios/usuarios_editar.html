@@ -1,0 +1,37 @@
+{% extends 'tienda/base.html' %}
+{% block title %}Editar Usuario{% endblock %}
+
+{% block content %}
+    <h1 class="h2 mb-4">Editar Usuario: {{ usuario.Nombre }}</h1>
+
+    <div class="card shadow-sm" style="max-width: 600px; margin: 0 auto;">
+        <div class="card-body">
+            <form method="POST">
+                {% csrf_token %}
+                <div class="mb-3">
+                    <label class="form-label">ID Usuario</label>
+                    <input type="number" class="form-control" value="{{ usuario.IdUsuario }}" disabled readonly>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Nombre de Usuario</label>
+                    <input type="text" class="form-control" name="Nombre" value="{{ usuario.Nombre }}" required>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Nueva Contraseña (Opcional)</label>
+                    <input type="password" class="form-control" name="Password" placeholder="Dejar vacío si no se cambia">
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Rol</label>
+                    <select class="form-select" name="Rol">
+                        <option value="Empleado" {% if usuario.Rol == 'Empleado' %}selected{% endif %}>Empleado</option>
+                        <option value="Admin" {% if usuario.Rol == 'Admin' %}selected{% endif %}>Admin</option>
+                    </select>
+                </div>
+                <div class="text-end">
+                    <a href="{% url 'usuarios_lista' %}" class="btn btn-secondary">Cancelar</a>
+                    <button type="submit" class="btn btn-primary">Guardar Cambios</button>
+                </div>
+            </form>
+        </div>
+    </div>
+{% endblock %}

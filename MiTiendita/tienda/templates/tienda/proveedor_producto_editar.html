@@ -1,0 +1,40 @@
+{% extends 'tienda/base.html' %}
+{% block title %}Editar Costo{% endblock %}
+
+{% block content %}
+    <h1 class="h2 mb-4">Editar Costo de Compra</h1>
+
+    <div class="card shadow-sm" style="max-width: 600px; margin: 0 auto;">
+        <div class="card-header bg-warning-subtle fw-bold">
+            {{ asignacion.NombreProducto }} <span class="text-muted fw-normal">comprado a</span> {{ asignacion.NombreProveedor }}
+        </div>
+        <div class="card-body">
+            <form method="POST">
+                {% csrf_token %}
+                
+                <div class="row">
+                    <div class="col-md-6 mb-3">
+                        <label class="form-label fw-bold">Cantidad de Compra</label>
+                        <input type="number" class="form-control" name="cantidad_compra" 
+                               value="{{ asignacion.CantidadCompra }}" required>
+                        <div class="form-text small">Unidades por paquete.</div>
+                    </div>
+                    
+                    <div class="col-md-6 mb-3">
+                        <label class="form-label fw-bold">Costo Unitario</label>
+                        <div class="input-group">
+                            <span class="input-group-text">C$</span>
+                            <input type="number" step="0.01" class="form-control" name="precio_compra" 
+                                   value="{{ asignacion.PrecioCompra }}" required>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="text-end mt-3">
+                    <a href="{% url 'proveedor_producto_lista' %}" class="btn btn-secondary">Cancelar</a>
+                    <button type="submit" class="btn btn-primary">Guardar Cambios</button>
+                </div>
+            </form>
+        </div>
+    </div>
+{% endblock %}

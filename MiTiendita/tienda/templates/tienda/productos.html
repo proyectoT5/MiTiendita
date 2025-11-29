@@ -1,26 +1,26 @@
 {% extends 'tienda/base.html' %}
-
 {% block title %}Administrar Productos{% endblock %}
 
 {% block content %}
-    
     <div class="d-flex justify-content-between align-items-center mb-3">
         <h1 class="h2">Gestión de Productos</h1>
+        {% if request.session.user_rol == 'Admin' %}
         <a href="{% url 'productos_agregar' %}" class="btn btn-primary">
             <i class="fas fa-plus"></i> Agregar Nuevo Producto
         </a>
+        {% endif %}
     </div>
 
     <div class="card shadow-sm mb-4">
         <div class="card-body">
-            <form method="GET" action="{% url 'productos_lista' %}">
-                <div class="input-group">
-                    <input type-="text" class="form-control" 
-                           placeholder="Buscar producto por nombre..." 
-                           name="q" value="{{ search_query }}">
-                    <button class="btn btn-outline-secondary" type="submit">
-                        <i class="fas fa-search"></i> Buscar
-                    </button>
+            <form method="GET" action="{% url 'productos_lista' %}" class="d-flex justify-content-between">
+                <div class="input-group" style="width: 70%;">
+                    <input type="text" class="form-control" placeholder="Buscar producto..." name="q" value="{{ search_query }}">
+                    <button class="btn btn-outline-secondary" type="submit"><i class="fas fa-search"></i> Buscar</button>
+                </div>
+                <div class="form-check form-switch align-self-center">
+                    <input class="form-check-input" type="checkbox" id="mostrar_desactivados" name="mostrar_desactivados" value="true" {% if mostrando_desactivados %}checked{% endif %} onchange="this.form.submit()"> 
+                    <label class="form-check-label" for="mostrar_desactivados">Mostrar Desactivados</label>
                 </div>
             </form>
         </div>
@@ -29,44 +29,42 @@
     <div class="card shadow-sm">
         <div class="card-body">
             <div class="table-responsive">
-                <table class="table table-striped table-hover">
+                <table class="table table-striped table-hover align-middle">
                     <thead class="table-dark">
                         <tr>
-                            <th>ID</th>
-                            <th>Nombre</th>
-                            <th>Precio Venta</th>
-                            <th>Cantidad</th>
-                            <th>Stock Mín.</th>
-                            <th>Acciones</th>
+                            <th>ID</th><th>Nombre</th><th>Precio</th><th>Cant.</th><th>Stock Mín.</th><th>Estado</th><th>Acciones</th>
                         </tr>
                     </thead>
                     <tbody>
                         {% for producto in productos %}
-                        <tr>
+                        <tr {% if not producto.Activo %}class="opacity-50"{% endif %}>
                             <td>{{ producto.Id_Producto }}</td>
-                            <td>{{ producto.Nombre }}</td>
+                            <td>{% if not producto.Activo %}<s>{{ producto.Nombre }}</s>{% else %}{{ producto.Nombre }}{% endif %}</td>
                             <td>C$ {{ producto.PrecioVenta|floatformat:2 }}</td>
                             <td>{{ producto.Cantidad }}</td>
                             <td>{{ producto.StockMinimo }}</td>
                             <td>
+                                {% if producto.Activo %}<span class="badge bg-success">Activo</span>{% else %}<span class="badge bg-danger">Desactivado</span>{% endif %}
+                            </td>
+                            <td>
+                                {% if request.session.user_rol == 'Admin' %}
                                     <a href="{% url 'productos_editar' producto.Id_Producto %}" class="btn btn-sm btn-warning">
                                         <i class="fas fa-edit"></i>
-                                    </a>                                
-                                <button type="button" class="btn btn-sm btn-danger" 
-                                        data-bs-toggle="modal" 
-                                        data-bs-target="#confirmDeleteModal"
-                                        data-product-id="{{ producto.Id_Producto }}"
-                                        data-product-name="{{ producto.Nombre }}">
-                                    <i class="fas fa-trash"></i>
-                                </button>
+                                    </a>
+                                    {% if producto.Activo %}
+                                        <button type="button" class="btn btn-sm btn-danger" data-bs-toggle="modal" data-bs-target="#confirmDeleteModal" data-id="{{ producto.Id_Producto }}" data-name="{{ producto.Nombre }}">
+                                            <i class="fas fa-trash"></i>
+                                        </button>
+                                    {% else %}
+                                        <a href="{% url 'productos_reactivar' producto.Id_Producto %}" class="btn btn-sm btn-success"><i class="fas fa-check"></i></a>
+                                    {% endif %}
+                                {% else %}
+                                    <span class="text-muted small">Solo lectura</span>
+                                {% endif %}
                             </td>
                         </tr>
                         {% empty %}
-                        <tr>
-                            <td colspan="6" class="text-center">
-                                No se encontraron productos.
-                            </td>
-                        </tr>
+                        <tr><td colspan="7" class="text-center">No hay productos.</td></tr>
                         {% endfor %}
                     </tbody>
                 </table>
@@ -74,71 +72,32 @@
         </div>
     </div>
 
-
-    <div class="modal fade" id="confirmDeleteModal" tabindex="-1" aria-labelledby="modalLabel" aria-hidden="true">
-  <div class="modal-dialog">
-    <div class="modal-content">
-      
-      <div class="modal-header">
-        <h5 class="modal-title" id="modalLabel">
-          <i class="fas fa-exclamation-triangle text-danger"></i> ¿Estás seguro?
-        </h5>
-        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-      </div>
-      
-      <div class="modal-body">
-        ¿De verdad querés eliminar el producto: 
-        <strong><span id="modalProductName">...</span></strong>?
-        
-        <p class="text-danger small mt-2">Esta acción no se puede deshacer.</p>
-      </div>
-      
-      <div class="modal-footer">
-        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
-          <i class="fas fa-times"></i> Cancelar
-        </button>
-        
-        <a href="#" id="modalDeleteButton" class="btn btn-danger">
-          <i class="fas fa-trash"></i> Sí, eliminar
-        </a>
-      </div>
-      
+    <div class="modal fade" id="confirmDeleteModal" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header"><h5 class="modal-title">Confirmar</h5><button class="btn-close" data-bs-dismiss="modal"></button></div>
+                <div class="modal-body">¿Desactivar a: <strong><span id="modalName"></span></strong>?</div>
+                <div class="modal-footer">
+                    <button class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                    <a href="#" id="modalDeleteButton" class="btn btn-danger">Sí, desactivar</a>
+                </div>
+            </div>
+        </div>
     </div>
-  </div>
-</div>
-
-<script>
-// Cuando se termina de cargar la página...
-document.addEventListener('DOMContentLoaded', (event) => {
-    
-    // 1. Agarrá el Modal (la ventana)
-    var confirmDeleteModal = document.getElementById('confirmDeleteModal');
-    
-    // 2. Escuchá cuando alguien intente ABRIR el modal
-    confirmDeleteModal.addEventListener('show.bs.modal', function (event) {
-        
-        // 3. 'event.relatedTarget' es el botón (rojo) que apretaste
-        var button = event.relatedTarget;
-        
-        // 4. Jala los datos que pusimos en el botón
-        var productId = button.getAttribute('data-product-id');
-        var productName = button.getAttribute('data-product-name');
-        
-        // 5. Busca la etiqueta <span id="modalProductName">...</span>
-        //    y le pone el nombre del producto.
-        var modalBody = confirmDeleteModal.querySelector('#modalProductName');
-        modalBody.textContent = productName;
-        
-        // 6. Construye el link de borrado (ej: /productos/eliminar/5/)
-        var deleteUrl = `/productos/eliminar/${productId}/`;
-        
-        // 7. Agarra el botón rojo (el de "Sí, eliminar")
-        //    y le pone el link que acabamos de construir.
-        var modalDeleteButton = confirmDeleteModal.querySelector('#modalDeleteButton');
-        modalDeleteButton.setAttribute('href', deleteUrl);
-    });
-});
-</script>
-
 {% endblock %}
 
+{% block content_scripts %}
+<script>
+    // Solo dejamos el script del modal, las alertas ya están en base.html
+    var modal = document.getElementById('confirmDeleteModal');
+    if (modal) {
+        modal.addEventListener('show.bs.modal', function (event) {
+            var btn = event.relatedTarget;
+            var id = btn.getAttribute('data-id');
+            var name = btn.getAttribute('data-name');
+            modal.querySelector('#modalName').textContent = name;
+            modal.querySelector('#modalDeleteButton').href = `/productos/eliminar/${id}/`;
+        });
+    }
+</script>
+{% endblock %}

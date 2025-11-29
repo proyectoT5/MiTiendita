@@ -1,66 +1,131 @@
 {% extends 'tienda/base.html' %}
-
-{% block title %}Agregar Nuevo Cliente{% endblock %}
+{% block title %}Agregar Cliente{% endblock %}
 
 {% block content %}
     
-    <h1 class="h2 mb-4">Agregar Nuevo Cliente</h1>
-
-    {% if messages %}
-        {% for message in messages %}
-            <div class="alert alert-{{ message.tags }} alert-dismissible fade show" role="alert">
-                {{ message }}
-                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
-            </div>
-        {% endfor %}
-    {% endif %}
-
-    <div class="card shadow-sm">
-        <div class="card-body">
-            
-            <form method="POST">
-                {% csrf_token %} 
-
-                <div class="row">
-                    <div class="col-md-6">
-                        <div class="mb-3">
-                            <label for="Id_Cliente" class="form-label">ID del Cliente (PK)</label>
-                            <input type="number" class="form-control" id="Id_Cliente" name="Id_Cliente" required>
-                        </div>
-                        
-                        <div class="mb-3">
-                            <label for="Nombre" class="form-label">Nombre</label>
-                            <input type="text" class="form-control" id="Nombre" name="Nombre" required>
-                        </div>
-
-                        <div class="mb-3">
-                            <label for="Apellido" class="form-label">Apellido</label>
-                            <input type="text" class="form-control" id="Apellido" name="Apellido" required>
-                        </div>
-                    </div>
-
-                    <div class="col-md-6">
-                        <div class="mb-3">
-                            <label for="numero_telefono_C" class="form-label">Teléfono </label>
-                            <input type="text" class="form-control" id="numero_telefono_C" name="numero_telefono_C" placeholder="Ej: 8888-8888">
-                            <small class="form-text text-muted">Para agregar más teléfonos, edite el cliente después de crearlo.</small>
-                        </div>
-                    </div>
+    <div id="alert-container" class="position-fixed top-0 end-0 p-3" style="z-index: 2000; max-width: 400px;">
+        {% if messages %}
+            {% for message in messages %}
+                <div class="alert alert-{{ message.tags }} alert-dismissible fade show shadow border-0 bg-white text-dark d-flex align-items-center">
+                    {% if message.tags == 'success' %} <i class="fas fa-check-circle text-success fs-4 me-3"></i>
+                    {% else %} <i class="fas fa-exclamation-circle text-danger fs-4 me-3"></i> {% endif %}
+                    <div>{{ message }}</div>
+                    <button type="button" class="btn-close ms-auto" data-bs-dismiss="alert"></button>
                 </div>
-
-                <hr>
-
-                <div class="text-end">
-                    <a href="{% url 'clientes_lista' %}" class="btn btn-secondary">
-                        <i class="fas fa-times"></i> Cancelar
-                    </a>
-                    <button type="submit" class="btn btn-primary">
-                        <i class="fas fa-save"></i> Guardar Cliente
-                    </button>
-                </div>
-            </form>
-
-        </div>
+            {% endfor %}
+        {% endif %}
     </div>
 
+    <h1 class="h2 mb-4">Agregar Nuevo Cliente</h1>
+
+    <div class="card shadow-sm" style="max-width: 700px; margin: 0 auto;">
+        <div class="card-body">
+            <form method="POST" id="formCliente" novalidate>
+                {% csrf_token %}
+                
+                <div class="row mb-3">
+                    <div class="col-md-6">
+                        <label class="form-label fw-bold">ID del Cliente (PK)</label>
+                        <input type="number" class="form-control" name="Id_Cliente" required>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label fw-bold">Correo (Opcional)</label>
+                        <input type="email" class="form-control" id="inputCorreo" name="Correo" placeholder="ejemplo@correo.com">
+                        <div class="invalid-feedback">
+                            ¡Oe! Revisá el correo, debe ser @gmail.com, @hotmail.com, etc.
+                        </div>
+                    </div>
+                </div>
+
+                <div class="row mb-3">
+                    <div class="col-md-6">
+                        <label class="form-label fw-bold">Nombre</label>
+                        <input type="text" class="form-control" name="Nombre" required
+                               oninput="this.value = this.value.replace(/[^a-zA-ZáéíóúÁÉÍÓÚñÑ\s]/g, '')">
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label fw-bold">Apellido</label>
+                        <input type="text" class="form-control" name="Apellido" required
+                               oninput="this.value = this.value.replace(/[^a-zA-ZáéíóúÁÉÍÓÚñÑ\s]/g, '')">
+                    </div>
+                </div>
+
+                <div class="row mb-3">
+                    <div class="col-md-6">
+                        <label class="form-label fw-bold">Teléfono 1 (Principal)</label>
+                        <input type="text" class="form-control" name="numero_telefono_C_1" 
+                               placeholder="8888-8888" maxlength="9"
+                               oninput="formatoTelefono(this)">
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label fw-bold">Teléfono 2 (Opcional)</label>
+                        <input type="text" class="form-control" name="numero_telefono_C_2" 
+                               placeholder="8888-8888" maxlength="9"
+                               oninput="formatoTelefono(this)">
+                    </div>
+                </div>
+
+                <div class="text-end">
+                    <a href="{% url 'clientes_lista' %}" class="btn btn-secondary">Cancelar</a>
+                    <button type="submit" class="btn btn-primary">Guardar Cliente</button>
+                </div>
+            </form>
+        </div>
+    </div>
+{% endblock %}
+
+{% block content_scripts %}
+<script>
+    // 1. FUNCIÓN PARA DAR FORMATO AL TELÉFONO (XXXX-XXXX)
+    function formatoTelefono(input) {
+        // Quitar todo lo que NO sea número
+        let numero = input.value.replace(/\D/g, '');
+        
+        // Limitar a 8 dígitos reales
+        if (numero.length > 8) {
+            numero = numero.substring(0, 8);
+        }
+        
+        // Si tiene más de 4 números, metemos el guion
+        if (numero.length > 4) {
+            input.value = numero.substring(0, 4) + '-' + numero.substring(4);
+        } else {
+            input.value = numero;
+        }
+    }
+
+    // 2. Alertas
+    setTimeout(function() {
+        var container = document.getElementById('alert-container');
+        if (container) {
+            var alerts = container.querySelectorAll('.alert');
+            alerts.forEach(function(alert) { var bsAlert = new bootstrap.Alert(alert); bsAlert.close(); });
+        }
+    }, 3000);
+
+    // 3. Validación Correo
+    const form = document.getElementById('formCliente');
+    const correoInput = document.getElementById('inputCorreo');
+    const dominiosValidos = ['gmail.com', 'hotmail.com', 'yahoo.com', 'outlook.com', 'live.com', 'icloud.com', 'yahoo.es', 'hotmail.es', 'outlook.es'];
+
+    form.addEventListener('submit', function(event) {
+        const correo = correoInput.value.trim().toLowerCase();
+        if (correo.length > 0) {
+            let esValido = false;
+            for (let dominio of dominiosValidos) {
+                if (correo.endsWith('@' + dominio)) { esValido = true; break; }
+            }
+            if (!esValido) {
+                event.preventDefault();
+                event.stopPropagation();
+                correoInput.classList.add('is-invalid');
+            } else {
+                correoInput.classList.remove('is-invalid');
+            }
+        }
+    });
+    correoInput.addEventListener('input', function() {
+        if (this.classList.contains('is-invalid')) { this.classList.remove('is-invalid'); }
+    });
+</script>
 {% endblock %}

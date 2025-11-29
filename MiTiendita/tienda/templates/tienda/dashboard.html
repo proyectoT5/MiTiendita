@@ -1,76 +1,196 @@
 {% extends 'tienda/base.html' %}
-
-{% block title %}Inicio - Mi Tiendita{% endblock %}
+{% block title %}Dashboard{% endblock %}
 
 {% block content %}
-    
-    <div class="mb-4">
-        <h1 class="display-5">
-            ¡BIENVENIDO al Dashboard, {{ nombre_usuario }}!
-        </h1>
-        <p class="lead">Desde aquí puedes administrar todas las funciones de "Mi Tiendita".</p>
+
+    <h1 class="h2 mb-4">¡BIENVENIDO al Dashboard, {{ nombre_usuario }}!</h1>
+    <p class="text-muted">Resumen de actividad de "Mi Tiendita".</p>
+
+    <div class="alert alert-info shadow-sm border-0">
+        <i class="fas fa-user-tag me-2"></i> Tu rol actual es: <strong>{{ rol_usuario }}</strong>
     </div>
 
-    <div class="alert alert-info" role="alert">
-       Tu rol actual es: <strong>{{ rol_usuario }}</strong>
+    {% if productos_bajos %}
+    <div class="card border-0 shadow mb-4 overflow-hidden">
+        <div class="card-header bg-danger bg-gradient text-white py-3">
+            <div class="d-flex justify-content-between align-items-center">
+                <h5 class="mb-0 fw-bold">
+                    <i class="fas fa-exclamation-circle fa-lg me-2"></i> Requieren Reabastecimiento
+                </h5>
+                <span class="badge bg-white text-danger rounded-pill">{{ productos_bajos|length }} Productos</span>
+            </div>
+        </div>
+        
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-hover align-middle mb-0">
+                    <thead class="bg-light-subtle text-uppercase small text-muted">
+                        <tr>
+                            <th class="ps-4">Producto</th>
+                            <th class="text-center">Estado</th>
+                            <th class="text-center">Stock / Mínimo</th>
+                            <th class="text-end pe-4">Acción</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for p in productos_bajos %}
+                        <tr>
+                            <td class="ps-4">
+                                <div class="d-flex align-items-center">
+                                    <div class="bg-danger-subtle text-danger rounded p-2 me-3">
+                                        <i class="fas fa-box-open"></i>
+                                    </div>
+                                    <div>
+                                        <h6 class="mb-0 fw-bold">{{ p.Nombre }}</h6>
+                                        <small class="text-danger fw-bold">¡Se agota!</small>
+                                    </div>
+                                </div>
+                            </td>
+                            <td class="text-center">
+                                <div class="progress" style="height: 6px; width: 80px; margin: 0 auto;">
+                                    <div class="progress-bar bg-danger" role="progressbar" style="width: 20%;"></div>
+                                </div>
+                                <small class="text-muted" style="font-size: 0.75rem;">Crítico</small>
+                            </td>
+                            <td class="text-center">
+                                <span class="badge bg-danger fs-6">{{ p.Cantidad }}</span>
+                                <span class="text-muted mx-1">/</span>
+                                <span class="badge bg-secondary">{{ p.StockMinimo }}</span>
+                            </td>
+                            <td class="text-end pe-4">
+                                <a href="{% url 'proveedor_producto_lista' %}?q={{ p.Nombre }}" 
+                                   class="btn btn-sm btn-outline-danger fw-bold rounded-pill px-3">
+                                    <i class="fas fa-truck me-1"></i> Pedir
+                                </a>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
     </div>
+    {% endif %}
 
-
-    <div class="row mt-4">
-
-        <div class="col-xl-3 col-md-6 mb-4">
-            <div class="card border-left-primary shadow h-100 py-2">
-                <div class="card-body">
-                    <div class="row no-gutters align-items-center">
-                        <div class="col mr-2">
-                            <div class="text-xs font-weight-bold text-primary text-uppercase mb-1">
-                                Clientes</div>
-                            <div class="h5 mb-0 font-weight-bold text-gray-800">{{ total_clientes }}</div>
-                        </div>
-                        <div class="col-auto">
-                            <i class="fas fa-users fa-2x text-gray-300"></i>
-                        </div>
+    <div class="row mb-4 mt-4">
+        <div class="col-md-4">
+            <div class="card text-white bg-primary mb-3 shadow h-100 border-0">
+                <div class="card-body d-flex justify-content-between align-items-center">
+                    <div>
+                        <h6 class="card-title text-uppercase mb-0 text-white fw-bold">CLIENTES FRECUENTES</h6>
+                        <h2 class="display-4 fw-bold my-0">{{ total_clientes }}</h2>
                     </div>
+                    <i class="fas fa-users fa-3x opacity-75"></i>
                 </div>
             </div>
         </div>
-
-        <div class="col-xl-3 col-md-6 mb-4">
-            <div class="card border-left-success shadow h-100 py-2">
-                <div class="card-body">
-                    <div class="row no-gutters align-items-center">
-                        <div class="col mr-2">
-                            <div class="text-xs font-weight-bold text-success text-uppercase mb-1">
-                                Productos</div>
-                            <div class="h5 mb-0 font-weight-bold text-gray-800">{{ total_productos }}</div>
-                        </div>
-                        <div class="col-auto">
-                            <i class="fas fa-box fa-2x text-gray-300"></i>
-                        </div>
+        <div class="col-md-4">
+            <div class="card text-white bg-success mb-3 shadow h-100 border-0">
+                <div class="card-body d-flex justify-content-between align-items-center">
+                    <div>
+                        <h6 class="card-title text-uppercase mb-0 text-white fw-bold">PRODUCTOS</h6>
+                        <h2 class="display-4 fw-bold my-0">{{ total_productos }}</h2>
                     </div>
+                    <i class="fas fa-box-open fa-3x opacity-75"></i>
                 </div>
             </div>
         </div>
-
-        <div class="col-xl-3 col-md-6 mb-4">
-            <div class="card border-left-info shadow h-100 py-2">
-                <div class="card-body">
-                    <div class="row no-gutters align-items-center">
-                        <div class="col mr-2">
-                            <div class="text-xs font-weight-bold text-info text-uppercase mb-1">
-                                Proveedores</div>
-                            <div class="h5 mb-0 font-weight-bold text-gray-800">{{ total_proveedores }}</div>
-                        </div>
-                        <div class="col-auto">
-                            <i class="fas fa-truck-loading fa-2x text-gray-300"></i>
-                        </div>
+        <div class="col-md-4">
+            <div class="card text-white bg-warning mb-3 shadow h-100 border-0">
+                <div class="card-body d-flex justify-content-between align-items-center">
+                    <div>
+                        <h6 class="card-title text-uppercase mb-0 text-white fw-bold">PROVEEDORES</h6>
+                        <h2 class="display-4 fw-bold my-0">{{ total_proveedores }}</h2>
                     </div>
+                    <i class="fas fa-truck-loading fa-3x opacity-75"></i>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row">
+        <div class="col-md-6 mb-4">
+            <div class="card shadow-sm h-100 card-custom">
+                <div class="card-header fw-bold border-0 pt-3 bg-transparent">
+                    Top 5 Productos Más Vendidos
+                </div>
+                <div class="card-body">
+                    <canvas id="barChart"></canvas>
                 </div>
             </div>
         </div>
         
-        
-
+        <div class="col-md-6 mb-4">
+            <div class="card shadow-sm h-100 card-custom">
+                <div class="card-header fw-bold border-0 pt-3 bg-transparent">
+                    Distribución de Ventas (Top 5)
+                </div>
+                <div class="card-body">
+                    <canvas id="pieChart" style="max-height: 300px;"></canvas>
+                </div>
+            </div>
+        </div>
     </div>
 
+    <style>
+        /* Ajustes finos para modo oscuro en el dashboard */
+        [data-bs-theme="dark"] .card-custom {
+            background-color: #1e1e1e !important;
+            color: white !important;
+        }
+        [data-bs-theme="light"] .card-custom {
+            background-color: white !important;
+            color: #212529 !important;
+        }
+        [data-bs-theme="dark"] .text-muted { color: #adb5bd !important; }
+    </style>
+
+{% endblock %}
+
+{% block content_scripts %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+    const labels = {{ chart_labels|safe }};
+    const data = {{ chart_data|safe }};
+    const colores = ['#FF6384', '#36A2EB', '#FFCE56', '#4BC0C0', '#9966FF'];
+
+    // Detectar tema para color de letra en gráficas
+    const isDark = document.documentElement.getAttribute('data-bs-theme') === 'dark';
+    Chart.defaults.color = isDark ? '#fff' : '#666';
+    Chart.defaults.borderColor = isDark ? '#444' : '#ddd';
+
+    const ctxBar = document.getElementById('barChart');
+    if (ctxBar) {
+        new Chart(ctxBar, {
+            type: 'bar',
+            data: {
+                labels: labels,
+                datasets: [{
+                    label: 'Unidades',
+                    data: data,
+                    backgroundColor: '#36A2EB',
+                    borderColor: '#36A2EB',
+                    borderWidth: 1
+                }]
+            },
+            options: { scales: { y: { beginAtZero: true } } }
+        });
+    }
+
+    const ctxPie = document.getElementById('pieChart');
+    if (ctxPie) {
+        new Chart(ctxPie, {
+            type: 'pie',
+            data: {
+                labels: labels,
+                datasets: [{
+                    data: data,
+                    backgroundColor: colores,
+                    hoverOffset: 4
+                }]
+            },
+            options: { maintainAspectRatio: false }
+        });
+    }
+</script>
 {% endblock %}

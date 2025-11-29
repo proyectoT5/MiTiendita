@@ -1,0 +1,105 @@
+{% extends 'tienda/base.html' %}
+{% block title %}Editar Cliente{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <h2 class="mb-4">Editar Cliente: {{ cliente.Nombre }} {{ cliente.Apellido }}</h2>
+
+    <div class="card shadow-sm">
+        <div class="card-body">
+            <form method="POST" id="formClienteEditar" novalidate>
+                {% csrf_token %}
+                
+                <div class="row mb-3">
+                    <div class="col-md-2">
+                        <label class="form-label fw-bold">ID</label>
+                        <input type="number" class="form-control" value="{{ cliente.Id_Cliente }}" disabled readonly>
+                        <input type="hidden" name="Id_Cliente" value="{{ cliente.Id_Cliente }}">
+                    </div>
+                    <div class="col-md-5">
+                        <label class="form-label fw-bold">Nombre</label>
+                        <input type="text" class="form-control" name="Nombre" value="{{ cliente.Nombre }}" required
+                               oninput="this.value = this.value.replace(/[^a-zA-ZáéíóúÁÉÍÓÚñÑ\s]/g, '')">
+                    </div>
+                    <div class="col-md-5">
+                        <label class="form-label fw-bold">Apellido</label>
+                        <input type="text" class="form-control" name="Apellido" value="{{ cliente.Apellido }}" required
+                               oninput="this.value = this.value.replace(/[^a-zA-ZáéíóúÁÉÍÓÚñÑ\s]/g, '')">
+                    </div>
+                </div>
+
+                <div class="mb-3">
+                    <label class="form-label fw-bold">Correo (Opcional)</label>
+                    <input type="email" class="form-control" id="inputCorreoEditar" name="Correo" value="{{ cliente.correo|default:'' }}">
+                    <div class="invalid-feedback">Correo inválido.</div>
+                </div>
+
+                <hr>
+                <h5 class="text-muted">Teléfonos</h5>
+                
+                <div class="row mb-3">
+                    <div class="col-md-6">
+                        <label class="form-label">Teléfono 1</label>
+                        <input type="text" class="form-control" name="numero_telefono_C_1" 
+                               value="{{ telefono_1 }}" placeholder="8888-8888" maxlength="9"
+                               oninput="formatoTelefono(this)">
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label">Teléfono 2</label>
+                        <input type="text" class="form-control" name="numero_telefono_C_2" 
+                               value="{{ telefono_2 }}" placeholder="8888-8888" maxlength="9"
+                               oninput="formatoTelefono(this)">
+                    </div>
+                </div>
+
+                <div class="text-end">
+                    <a href="{% url 'clientes_lista' %}" class="btn btn-secondary">Cancelar</a>
+                    <button type="submit" class="btn btn-warning fw-bold">
+                        <i class="fas fa-save"></i> Guardar Cambios
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block content_scripts %}
+<script>
+    // 1. FUNCIÓN DE FORMATO (XXXX-XXXX)
+    function formatoTelefono(input) {
+        let numero = input.value.replace(/\D/g, ''); // Solo números
+        if (numero.length > 8) { numero = numero.substring(0, 8); } // Máx 8
+        if (numero.length > 4) {
+            input.value = numero.substring(0, 4) + '-' + numero.substring(4);
+        } else {
+            input.value = numero;
+        }
+    }
+
+    // 2. Validación Correo
+    const form = document.getElementById('formClienteEditar');
+    const correoInput = document.getElementById('inputCorreoEditar');
+    const dominiosValidos = ['gmail.com', 'hotmail.com', 'yahoo.com', 'outlook.com', 'live.com', 'icloud.com', 'yahoo.es', 'hotmail.es', 'outlook.es'];
+
+    form.addEventListener('submit', function(event) {
+        const correo = correoInput.value.trim().toLowerCase();
+        if (correo.length > 0) {
+            let esValido = false;
+            for (let dominio of dominiosValidos) {
+                if (correo.endsWith('@' + dominio)) { esValido = true; break; }
+            }
+            if (!esValido) {
+                event.preventDefault();
+                event.stopPropagation();
+                correoInput.classList.add('is-invalid');
+            } else {
+                correoInput.classList.remove('is-invalid');
+            }
+        }
+    });
+    correoInput.addEventListener('input', function() {
+        if (this.classList.contains('is-invalid')) { this.classList.remove('is-invalid'); }
+    });
+</script>
+{% endblock %}
