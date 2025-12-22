@@ -2,14 +2,25 @@ from django.urls import path
 from . import views
 
 urlpatterns = [
-    # Login/Logout
+    
+    # --- Login y Logout ---
     path('login/', views.login_sql_view, name='login'),
     path('logout/', views.logout_view, name='logout'),
     
-    # Gestión de Usuarios (CRUD)
+    # --- Gestión de Usuarios ---
+    
+    # 1. LISTA
     path('usuarios/', views.usuarios_lista_view, name='usuarios_lista'),
-    path('usuarios/agregar/', views.usuarios_agregar_view, name='usuarios_agregar'),
-    path('usuarios/editar/<int:id_usu>/', views.usuarios_editar_view, name='usuarios_editar'),
-    path('usuarios/eliminar/<int:id_usu>/', views.usuarios_eliminar_view, name='usuarios_eliminar'),
-    path('usuarios/reactivar/<int:id_usu>/', views.usuarios_reactivar_view, name='usuarios_reactivar'),
+    
+    # 2. AGREGAR
+    path('usuarios/agregar/', views.usuarios_agregar_view, name='usuario_agregar'),
+    
+    # 3. EDITAR (Aquí estaba el error: cambiamos id_usu por id_usuario)
+    path('usuarios/editar/<int:id_usuario>/', views.usuarios_editar_view, name='usuario_editar'),
+    
+    # 4. ELIMINAR (Aquí también: id_usuario)
+    path('usuarios/eliminar/<int:id_usuario>/', views.usuarios_eliminar_view, name='usuario_eliminar'),
+    
+    # 5. REACTIVAR (Aquí también: id_usuario)
+    path('usuarios/reactivar/<int:id_usuario>/', views.usuarios_reactivar_view, name='usuario_reactivar'),
 ]

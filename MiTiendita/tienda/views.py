@@ -1,4 +1,9 @@
 # tienda/views.py
+from django.core.files.storage import FileSystemStorage
+from .models import Productos
+import uuid # Para generar códigos únicos
+from django.core.mail import send_mail # Para enviar el correo
+from django.urls import reverse
 from django.shortcuts import render, redirect
 from django.db import connection, transaction
 from django.contrib import messages
@@ -9,6 +14,7 @@ import os
 import datetime 
 from decimal import Decimal 
 import json
+from django.core.mail import send_mail  
 
 # --- DECORADORES ---
 def login_requerido(view_func):
@@ -190,56 +196,38 @@ def productos_view(request):
     context = {'nombre_usuario': request.session.get('user_nombre'), 'rol_usuario': request.session.get('user_rol'), 'productos': productos, 'search_query': search_query, 'mostrando_desactivados': bool(mostrar_desactivados)}
     return render(request, 'tienda/productos.html', context)
 
-@admin_requerido
 def productos_agregar_view(request):
     if request.method == 'POST':
-        prod_id = request.POST.get('Id_Producto')
-        # .strip() quita espacios al inicio y final para evitar "Coca Cola " vs "Coca Cola"
-        prod_nombre = request.POST.get('Nombre').strip()
-        prod_precio = request.POST.get('PrecioVenta')
-        prod_cantidad = request.POST.get('Cantidad')
-        prod_stock = request.POST.get('StockMinimo')
-        ruta_db_para_foto = '' 
-        
-        if 'foto_del_producto' in request.FILES:
-            try:
-                archivo_foto = request.FILES['foto_del_producto']
-                ruta_para_guardar = os.path.join(settings.BASE_DIR, 'Imagenes', archivo_foto.name)
-                with open(ruta_para_guardar, 'wb+') as destination:
-                    for chunk in archivo_foto.chunks():
-                        destination.write(chunk)
-                ruta_db_para_foto = f"/static/{archivo_foto.name}"
-            except Exception as e:
-                print(f"Error foto: {e}")
-        
-        try:
-            with connection.cursor() as cursor:
-                # 1. VALIDAR ID
-                cursor.execute("SELECT COUNT(*) FROM Productos WHERE Id_Producto = %s", [prod_id])
-                if cursor.fetchone()[0] > 0:
-                    messages.error(request, f"¡El ID {prod_id} ya está ocupado!")
-                    return redirect('productos_lista')
+        # 1. Recoger datos
+        nombre = request.POST.get('nombre')
+        precio = request.POST.get('precio')
+        cantidad = request.POST.get('cantidad')
+        id_prov = request.POST.get('proveedor')
+        stock = request.POST.get('stock_min')
 
-                # 2. VALIDAR NOMBRE (BLINDADO)
-                # Usamos LOWER() para que "coca cola" sea igual a "COCA COLA" o "Coca Cola"
-                cursor.execute("SELECT COUNT(*) FROM Productos WHERE LOWER(Nombre) = LOWER(%s)", [prod_nombre])
-                if cursor.fetchone()[0] > 0:
-                    messages.error(request, f"¡Ya existe un producto llamado '{prod_nombre}'! No podés duplicarlo.")
-                    return redirect('productos_lista')
+        # 2. Manejar la Foto
+        ruta_foto = None
+        if 'foto' in request.FILES:
+            imagen = request.FILES['foto']
+            fs = FileSystemStorage()
+            filename = fs.save(imagen.name, imagen)
+            ruta_foto = fs.url(filename)
 
-                # 3. GUARDAR
-                cursor.execute("INSERT INTO Productos (Id_Producto, Nombre, PrecioVenta, Cantidad, StockMinimo, rutaFoto, Activo) VALUES (%s, %s, %s, %s, %s, %s, 1)", 
-                               [prod_id, prod_nombre, prod_precio, prod_cantidad, prod_stock, ruta_db_para_foto])
-            
-            messages.success(request, f"¡Producto '{prod_nombre}' agregado con éxito!")
-            return redirect('productos_lista')
+        # 3. Guardar en Base de Datos
+        nuevo = Productos(
+            nombre=nombre,
+            precioventa=precio,
+            cantidad=cantidad,
+            idproveedor=id_prov,
+            stockminimo=stock,
+            rutafoto=ruta_foto,
+            activo=True
+        )
+        nuevo.save()
+        return redirect('/productos/') 
 
-        except Exception as e:
-            print(f"Error al agregar producto: {e}")
-            messages.error(request, "Ocurrió un error al guardar.")
-
-    context = {'nombre_usuario': request.session.get('user_nombre'), 'rol_usuario': request.session.get('user_rol')}
-    return render(request, 'tienda/productos_agregar.html', context)
+    return render(request, 'productos/productos_agregar.html')
+    
 
 @admin_requerido
 def productos_eliminar_view(request, id_prod):
@@ -344,7 +332,7 @@ def clientes_view(request):
             if not mostrar_desactivados:
                 where_clause += " AND C.Activo = 1"
             
-            # 2. ¡EL MACHETAZO! OCULTAR LOS OCASIONALES
+           
             # Solo mostramos EsOcasional = 0 (Los frecuentes)
             where_clause += " AND C.EsOcasional = 0"
 
@@ -1259,3 +1247,114 @@ def prediccion_view(request):
                 messages.success(request, "Calculado.")
         except: messages.error(request, "Error en datos.")
     return render(request, 'tienda/prediccion.html', context)
+
+#recuperacion de cuenta
+# --- VISTA 1: SOLICITAR RECUPERACIÓN ---
+def recuperar_password_view(request):
+    if request.method == 'POST':
+        correo = request.POST.get('correo')
+        
+        try:
+            with connection.cursor() as cursor:
+                # 1. Buscamos si existe el correo en la BD
+                # Usamos IdUsuario (pegado) como corregimos antes
+                sql_buscar = "SELECT IdUsuario, Nombre FROM Usuarios WHERE Correo = %s"
+                cursor.execute(sql_buscar, [correo])
+                usuario = cursor.fetchone()
+                
+                if usuario:
+                    user_id = usuario[0]
+                    nombre = usuario[1]
+                    
+                    # 2. Generamos un token único (código largo y aleatorio)
+                    token = str(uuid.uuid4())
+                    
+                    # 3. Guardamos el token en la BD
+                    sql_update = "UPDATE Usuarios SET token_recuperacion = %s WHERE IdUsuario = %s"
+                    cursor.execute(sql_update, [token, user_id])
+                    
+                    # 4. Preparamos el Enlace y el Correo
+                    # Esto crea el link tipo: http://127.0.0.1:8000/cambiar-password/token...
+                    link = request.build_absolute_uri(reverse('cambiar_password', args=[token]))
+                    
+                    asunto = 'Recuperación de Contraseña - Mi Tiendita'
+                    mensaje = f'''
+                    Hola {nombre},
+                    
+                    Recibimos una solicitud para restablecer tu contraseña en Mi Tiendita.
+                    
+                    Para crear una nueva clave, hacé clic en el siguiente enlace:
+                    {link}
+                    
+                    Si no solicitaste esto, por favor ignorá este mensaje.
+                    
+                    Saludos,
+                    El equipo de Mi Tiendita.
+                    '''
+                    
+                    # 5. ¡ENVIAR EL CORREO REAL! 🚀
+                    send_mail(
+                        asunto,
+                        mensaje,
+                        settings.DEFAULT_FROM_EMAIL,  # Remitente (configurado en settings.py)
+                        [correo],                     # Destinatario
+                        fail_silently=False,
+                    )
+                    
+                    messages.success(request, f"¡Listo! Se ha enviado un enlace a {correo}. Revisá tu bandeja de entrada.")
+                    return redirect('login')
+                
+                else:
+                    # Si no encuentra el correo
+                    messages.error(request, "Ese correo electrónico no está registrado en el sistema.")
+                    
+        except Exception as e:
+            # Si falla la conexión o el envío de correo
+            print(f"Error detallado: {e}") # Imprime en consola para que veas qué pasó
+            messages.error(request, "Hubo un error al intentar enviar el correo. Verificá tu conexión.")
+
+    return render(request, 'tienda/password_reset_form.html')
+
+# --- VISTA 2: CAMBIAR LA CONTRASEÑA ---
+def cambiar_password_view(request, token):
+    # 1. Validar si el token existe
+    usuario_valido = None
+    try:
+        with connection.cursor() as cursor:
+            # Usamos IdUsuario
+            cursor.execute("SELECT IdUsuario, Nombre FROM Usuarios WHERE token_recuperacion = %s", [token])
+            usuario_valido = cursor.fetchone()
+    except Exception as e:
+        print(e)
+
+    if not usuario_valido:
+        messages.error(request, "El enlace es inválido o ya expiró.")
+        return redirect('login')
+
+    # 2. Procesar el cambio de contraseña
+    if request.method == 'POST':
+        nueva_pass = request.POST.get('password')
+        confirm_pass = request.POST.get('confirm_password')
+        
+        if nueva_pass != confirm_pass:
+            messages.error(request, "Las contraseñas no coinciden.")
+        else:
+            try:
+                # Encriptamos la contraseña
+                hash_pass = make_password(nueva_pass)
+                
+                with connection.cursor() as cursor:
+                    # OJO: Actualizamos Contraseña (con Ñ) y borramos el token
+                    sql = """
+                        UPDATE Usuarios 
+                        SET Contraseña = %s, token_recuperacion = NULL 
+                        WHERE token_recuperacion = %s
+                    """
+                    cursor.execute(sql, [hash_pass, token])
+                    
+                messages.success(request, "¡Contraseña restablecida! Ahora podés iniciar sesión.")
+                return redirect('login')
+            except Exception as e:
+                messages.error(request, f"Error al guardar: {e}")
+
+    return render(request, 'tienda/password_change_form.html', {'token': token})

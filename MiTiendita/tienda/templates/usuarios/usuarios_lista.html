@@ -1,0 +1,105 @@
+{% extends 'tienda/base.html' %}
+
+{% block title %}Administrar Usuarios{% endblock %}
+
+{% block content %}
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <h1 class="h2">Gestión de Usuarios</h1>
+        <a href="{% url 'usuario_agregar' %}" class="btn btn-primary shadow-sm">
+            <i class="fas fa-user-plus"></i> Agregar Nuevo Usuario
+        </a>
+    </div>
+
+    <div class="card shadow-sm mb-4 border-0">
+        <div class="card-body">
+            <form method="GET" class="row g-3 align-items-center">
+                <div class="col-md-8">
+                    <input type="text" class="form-control" placeholder="Buscar usuario..." name="q" value="{{ search_query }}">
+                </div>
+                <div class="col-md-2">
+                    <button class="btn btn-outline-secondary w-100" type="submit">
+                        <i class="fas fa-search"></i> Buscar
+                    </button>
+                </div>
+                <div class="col-md-2">
+                    <div class="form-check form-switch">
+                         <input class="form-check-input" type="checkbox" id="mostrar_desactivados" name="mostrar_desactivados" value="true" {% if mostrando_desactivados %}checked{% endif %} onchange="this.form.submit()"> 
+                         <label class="form-check-label" for="mostrar_desactivados">Mostrar Desactivados</label>
+                    </div>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <div class="card shadow-sm border-0">
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-striped table-hover align-middle mb-0">
+                    <thead class="table-dark">
+                        <tr>
+                            <th class="ps-3">ID</th>
+                            <th>Nombre</th>
+                            <th>Correo</th>
+                            <th>Rol</th>
+                            <th>Estado</th>
+                            <th class="text-end pe-3">Acciones</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for u in usuarios %}
+                        <tr {% if not u.Activo %}class="opacity-50"{% endif %}>
+                            
+                            <td class="ps-3">{{ u.IdUsuario }}</td>
+                            
+                            <td class="fw-bold">{{ u.Nombre }}</td>
+                            
+                            <td class="text-muted small">
+                                {% if u.Correo %}
+                                    {{ u.Correo }}
+                                {% else %}
+                                    <span class="text-warning fst-italic">Sin correo</span>
+                                {% endif %}
+                            </td>
+
+                            <td>
+                                {% if u.Rol == 'Admin' %}
+                                    <span class="badge bg-warning text-dark">Admin</span>
+                                {% else %}
+                                    <span class="badge bg-info text-dark">Empleado</span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                {% if u.Activo %}
+                                    <span class="badge bg-success">Activo</span>
+                                {% else %}
+                                    <span class="badge bg-danger">Inactivo</span>
+                                {% endif %}
+                            </td>
+                            <td class="text-end pe-3">
+                                <a href="{% url 'usuario_editar' u.IdUsuario %}" class="btn btn-sm btn-warning me-1" title="Editar">
+                                    <i class="fas fa-edit"></i>
+                                </a>
+                                
+                                {% if u.Activo %}
+                                    <a href="{% url 'usuario_eliminar' u.IdUsuario %}" class="btn btn-sm btn-danger" title="Desactivar" 
+                                       onclick="return confirm('¿Seguro que deseas desactivar a este usuario?');">
+                                        <i class="fas fa-trash"></i>
+                                    </a>
+                                {% else %}
+                                    <a href="{% url 'usuario_reactivar' u.IdUsuario %}" class="btn btn-sm btn-success" title="Reactivar">
+                                        <i class="fas fa-check"></i>
+                                    </a>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% empty %}
+                        <tr>
+                            <td colspan="6" class="text-center text-muted py-4">No se encontraron usuarios.</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+{% endblock %}
