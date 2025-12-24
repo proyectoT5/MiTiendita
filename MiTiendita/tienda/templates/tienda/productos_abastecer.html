@@ -1,0 +1,58 @@
+{% extends 'tienda/base.html' %}
+{% load static %}
+
+{% block content %}
+<div class="container mt-5">
+    <div class="row justify-content-center">
+        <div class="col-md-8">
+            <h2 class="mb-4 text-dark"><i class="fas fa-boxes me-2"></i>Abastecer Inventario</h2>
+            
+            <div class="card shadow-sm border-0" style="border-radius: 15px;">
+                <div class="card-body p-5">
+                    <div class="text-center mb-5">
+                        <h3 class="text-primary fw-bold">{{ producto.nombre }}</h3>
+                        <div class="badge bg-light text-dark border p-2" style="font-size: 1rem;">
+                            Stock Actual: <span class="text-danger fw-bold">{{ producto.stock }} uds</span>
+                        </div>
+                    </div>
+
+                    <form method="POST">
+                        {% csrf_token %}
+                        <div class="row">
+                            <div class="col-md-12 mb-4">
+                                <label class="form-label fw-bold">Cantidad de unidades compradas</label>
+                                <input type="number" name="cantidad_compra" 
+                                       class="form-control form-control-lg bg-light border-0" 
+                                       placeholder="Ej: 50" min="1" required 
+                                       style="border-radius: 10px;">
+                                <small class="text-muted">Esta cantidad se sumará automáticamente al stock actual.</small>
+                            </div>
+                        </div>
+
+                        <div class="d-flex justify-content-end gap-2 mt-3">
+                            <a href="{% url 'dashboard' %}" class="btn btn-secondary btn-lg px-4" 
+                               style="border-radius: 10px; background-color: #6c757d; border: none;">
+                                Cancelar
+                            </a>
+                            <button type="submit" class="btn btn-success btn-lg px-4" 
+                                    style="border-radius: 10px; background-color: #28a745; border: none;">
+                                <i class="fas fa-check me-2"></i>Confirmar Abastecimiento
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+    /* Estilo para que combine con el resto de tu app */
+    .bg-light {
+        background-color: #f8f9fa !important;
+    }
+    .card {
+        transition: transform 0.2s;
+    }
+</style>
+{% endblock %}

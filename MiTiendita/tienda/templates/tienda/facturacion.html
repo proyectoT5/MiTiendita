@@ -1,458 +1,214 @@
 {% extends 'tienda/base.html' %}
-{% block title %}Punto de Venta{% endblock %}
+{% load static %}
 
 {% block content %}
-    
-    <div class="d-flex justify-content-between align-items-center mb-2">
-        <div>
-            <h4 class="fw-bold mb-0 header-title"><i class="fas fa-cash-register me-2 text-primary"></i>Punto de Venta</h4>
-        </div>
-        <div class="text-end">
-            <span class="badge bg-primary rounded-pill px-3 py-2 fs-6 shadow-sm">
-                <i class="fas fa-calendar-alt me-1"></i> {% now "d/m/Y" %}
-            </span>
-        </div>
-    </div>
 
-    <div class="row g-3" style="height: 80vh;"> 
+<style>
+    /* Inputs numéricos limpios */
+    input[type=number]::-webkit-inner-spin-button, 
+    input[type=number]::-webkit-outer-spin-button { 
+        -webkit-appearance: none; margin: 0; 
+    }
+    input[type=number] { -moz-appearance: textfield; }
+
+    /* Tarjetas */
+    .producto-card {
+        transition: transform 0.2s, box-shadow 0.2s;
+        cursor: pointer; border: 1px solid #eee;
+    }
+    .producto-card:hover {
+        transform: translateY(-3px);
+        box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+        border-color: #0d6efd;
+    }
+    .stock-badge {
+        position: absolute; top: 10px; right: 10px; font-size: 0.8rem; z-index: 10;
+    }
+</style>
+
+<div class="container-fluid mt-3">
+    <div class="row">
         
-        <div class="col-md-4 h-100 d-flex flex-column">
-            
-            <div class="card border-0 shadow-sm mb-3 flex-shrink-0 search-card">
+        <div class="col-md-8">
+            <div class="card shadow-sm mb-3">
                 <div class="card-body p-2">
-                    <form method="GET" action="{% url 'facturacion_view' %}">
-                        <input type="hidden" name="q_cliente" value="{{ search_cliente_query }}">
-                        <input type="hidden" name="cliente_seleccionado" value="{{ cliente_seleccionado }}">
-                        <input type="hidden" name="monto_pagado" value="{{ monto_pagado_previo }}">
-                        
-                        <div class="input-group">
-                            <span class="input-group-text border-0"><i class="fas fa-search"></i></span>
-                            <input type="text" class="form-control border-0" 
-                                   placeholder="Buscar producto..." 
-                                   name="q_producto" value="{{ search_query }}" autocomplete="off">
-                            <button class="btn btn-primary" type="submit">Buscar</button>
-                        </div>
+                    <form method="GET" action="{% url 'facturacion_view' %}" class="d-flex gap-2">
+                        <input type="text" name="q" class="form-control form-control-lg" placeholder="🔍 Buscar producto..." value="{{ request.GET.q|default:'' }}" autofocus>
+                        <button type="submit" class="btn btn-primary btn-lg">Buscar</button>
+                        {% if request.GET.q %}
+                            <a href="{% url 'facturacion_view' %}" class="btn btn-outline-secondary btn-lg">Limpiar</a>
+                        {% endif %}
                     </form>
                 </div>
             </div>
 
-            <div class="card border-0 shadow-sm flex-grow-1 product-list-container" style="overflow: hidden;">
-                <div class="card-header border-bottom py-2">
-                    <h6 class="mb-0 fw-bold">
-                        <i class="fas fa-box me-1"></i> Disponibles
-                    </h6>
-                </div>
-                
-                <div class="card-body p-2" style="overflow-y: auto; height: 100%;">
-                    {% for p in productos_en_pantalla %}
-                    <div class="card mb-2 border-0 shadow-sm product-card">
-                        <div class="card-body p-2 d-flex align-items-center">
-                            <div class="position-relative me-3">
-                                <img src="{{ p.rutaFoto|default:'/static/imagenes/placeholder.png' }}" 
-                                     style="width: 55px; height: 55px; object-fit: cover; border-radius: 10px;">
-                                <span class="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-secondary border border-white" style="font-size: 0.6rem;">
-                                    {{ p.Cantidad }}
-                                </span>
-                            </div>
-                            
-                            <div class="flex-grow-1 lh-sm">
-                                <h6 class="mb-1 fw-bold product-name text-truncate" style="max-width: 130px;" title="{{ p.Nombre }}">
-                                    {{ p.Nombre }}
-                                </h6>
-                                <span class="text-success fw-bold">C$ {{ p.PrecioVenta|floatformat:2 }}</span>
-                            </div>
-
-                            <div class="d-flex align-items-center rounded-pill p-1 border qty-control">
-                                <input type="number" class="form-control form-control-sm border-0 bg-transparent text-center p-0 fw-bold" 
-                                       id="cant_{{ p.Id_Producto }}" value="1" min="1" max="{{ p.Cantidad }}" 
-                                       style="width: 35px;">
-                                
-                                <button type="button" class="btn btn-sm btn-primary rounded-circle shadow-sm" 
-                                        style="width: 30px; height: 30px; padding: 0;"
-                                        onclick="agregarProducto('{{ p.Id_Producto }}')">
-                                    <i class="fas fa-plus"></i>
-                                </button>
-                            </div>
-                        </div>
-                    </div>
-                    {% empty %}
-                        <div class="text-center py-5 empty-state">
-                            <i class="fas fa-search fa-3x mb-3 opacity-25"></i>
-                            <p class="small">No se encontraron productos.</p>
-                        </div>
-                    {% endfor %}
-                </div>
-            </div>
-        </div>
-
-        <div class="col-md-8 h-100 d-flex flex-column">
-            <div class="card border-0 shadow h-100 d-flex flex-column ticket-card">
-                
-                <div class="card-header bg-dark text-white py-2 d-flex justify-content-between align-items-center">
-                    <h6 class="mb-0"><i class="fas fa-shopping-cart me-2"></i>Detalle de Venta</h6>
-                    <span class="badge bg-secondary" id="cart-count">{{ carrito|length }} ítems</span>
-                </div>
-                
-                <div class="card-body p-0 d-flex flex-column flex-grow-1 position-relative">
-                    <div class="table-responsive flex-grow-1" style="overflow-y: auto;">
-                        <table class="table table-striped table-hover mb-0 align-middle table-sm ticket-table">
-                            <thead class="small sticky-top" style="z-index: 10;">
-                                <tr>
-                                    <th class="ps-3">Producto</th>
-                                    <th class="text-center">Cant.</th>
-                                    <th class="text-end">Precio</th>
-                                    <th class="text-end">Subtotal</th>
-                                    <th class="text-center pe-3"></th>
-                                </tr>
-                            </thead>
-                            <tbody id="carrito-body">
-                                {% for item in carrito %}
-                                <tr>
-                                    <td class="ps-3 fw-500">{{ item.nombre }}</td>
-                                    <td class="text-center"><span class="badge bg-secondary border px-2">{{ item.cantidad }}</span></td>
-                                    <td class="text-end text-muted">C$ {{ item.precio_unitario }}</td>
-                                    <td class="text-end fw-bold text-primary">C$ {{ item.subtotal }}</td>
-                                    <td class="text-center pe-3">
-                                        <button type="button" class="btn btn-outline-danger btn-sm rounded-circle border-0" 
-                                                onclick="eliminarProducto({{ forloop.counter0 }})">
-                                            <i class="fas fa-trash-alt"></i>
-                                        </button>
-                                    </td>
-                                </tr>
-                                {% empty %}
-                                <tr>
-                                    <td colspan="5" class="text-center text-muted py-5">
-                                        <div class="py-5">
-                                            <i class="fas fa-shopping-basket fa-4x mb-3 opacity-25"></i>
-                                            <p>El carrito está vacío.</p>
-                                        </div>
-                                    </td>
-                                </tr>
-                                {% endfor %}
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-
-                <div class="card-footer border-top p-3 shadow-lg payment-area" style="z-index: 20;">
-                    <form method="POST" action="{% url 'facturacion_guardar' %}">
+            <div class="row row-cols-1 row-cols-md-3 row-cols-lg-4 g-3" style="max-height: 80vh; overflow-y: auto; padding-bottom: 50px;">
+                {% for prod in productos %}
+                <div class="col">
+                    <form action="{% url 'facturacion_agregar_item' %}" method="POST">
                         {% csrf_token %}
                         
-                        <div class="row g-3">
-                            <div class="col-md-5">
-                                <label class="form-label small fw-bold text-uppercase text-muted mb-1">3. Cliente</label>
-                                <div class="input-group input-group-sm">
-                                    <span class="input-group-text"><i class="fas fa-user"></i></span>
-                                    <input type="text" class="form-control" id="input_busqueda_cliente" 
-                                           value="{{ search_cliente_query }}" 
-                                           placeholder="Buscar..."
-                                           onkeydown="if(event.key === 'Enter'){ event.preventDefault(); buscarCliente(); }">
-                                    <button class="btn btn-outline-secondary" type="button" onclick="buscarCliente()">
-                                        <i class="fas fa-search"></i>
-                                    </button>
-                                    <button class="btn btn-outline-primary" type="button" data-bs-toggle="modal" data-bs-target="#modalClienteRapido">
-                                        <i class="fas fa-plus"></i>
-                                    </button>
-                                    
-                                    <button class="btn btn-info text-white" type="button" onclick="autoSeleccionarUsuario()" title="Soy Yo (Autocompra)">
-                                        <i class="fas fa-user-tag"></i>
-                                    </button>
-                                </div>
-                                
-                                <div class="mt-2 border rounded p-1 overflow-auto custom-scrollbar client-list" id="lista-clientes-container" style="max-height: 80px;">
-                                    {% for c in clientes_buscados %}
-                                    <div class="form-check form-check-sm px-3 border-bottom pb-1 mb-1">
-                                        <input class="form-check-input radio-cliente" type="radio" 
-                                               name="cliente_id" value="{{ c.Id_Cliente }}" 
-                                               id="c_{{ c.Id_Cliente }}"
-                                               {% if c.Id_Cliente|stringformat:"s" == cliente_seleccionado %}checked{% endif %} required>
-                                        <label class="form-check-label small text-truncate" for="c_{{ c.Id_Cliente }}" style="cursor: pointer;">
-                                            {{ c.Nombre }} {{ c.Apellido }}
-                                        </label>
+                        <input type="hidden" name="id_producto" value="{{ prod.Id_Producto }}">
+                        
+                        <div class="card h-100 producto-card position-relative" onclick="this.closest('form').submit();">
+                            
+                            <span class="badge bg-secondary stock-badge shadow-sm">
+                                Stock: {{ prod.Cantidad }}
+                            </span>
+
+                            <div class="text-center p-3 bg-white" style="height: 160px; display: flex; align-items: center; justify-content: center; border-bottom: 1px solid #f0f0f0;">
+                                {% if prod.rutaFoto %}
+                                    <img src="{{ prod.rutaFoto }}" style="max-height: 100%; max-width: 100%; object-fit: contain;">
+                                {% else %}
+                                    <div class="text-muted text-center">
+                                        <span style="font-size: 3rem;">📦</span><br>
+                                        <small>Sin imagen</small>
                                     </div>
+                                {% endif %}
+                            </div>
+
+                            <div class="card-body p-2 text-center">
+                                <h6 class="card-title text-truncate fw-bold mb-1" style="font-size: 0.95rem;">
+                                    {{ prod.Nombre }}
+                                </h6>
+                                <h5 class="text-primary fw-bold mb-0">
+                                    C$ {{ prod.PrecioVenta }}
+                                </h5>
+                            </div>
+                        </div>
+                    </form>
+                </div>
+                {% empty %}
+                <div class="col-12 text-center py-5">
+                    <h3 class="text-muted">No se encontraron productos 😢</h3>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+
+        <div class="col-md-4">
+            <div class="card shadow border-0 h-100">
+                <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center py-3">
+                    <h4 class="m-0 fw-bold"><i class="bi bi-cart4"></i> Caja</h4>
+                    <span class="badge bg-white text-primary rounded-pill">{{ request.session.carrito|length }} Ítems</span>
+                </div>
+                
+                <div class="card-body d-flex flex-column p-0">
+                    <form action="{% url 'facturacion_guardar' %}" method="POST" id="form-cobrar" class="d-flex flex-column h-100">
+                        {% csrf_token %}
+
+                        <div class="p-3 border-bottom bg-light">
+                            <label class="fw-bold small text-muted mb-1">CLIENTE:</label>
+                            <select name="cliente_id" class="form-select border-primary">
+                                <option value="" selected>-- Cliente Particular (Público General) --</option>
+                                {% for c in clientes %}
+                                    <option value="{{ c.id_cliente }}">
+                                        {{ c.nombre }} {{ c.apellido|default:"" }}
+                                    </option>
+                                {% endfor %}
+                            </select>
+                        </div>
+
+                        <div class="flex-grow-1 overflow-auto" style="max-height: 400px;">
+                            <table class="table table-striped table-hover mb-0">
+                                <thead class="table-light sticky-top">
+                                    <tr>
+                                        <th class="ps-3">Desc</th>
+                                        <th class="text-center">Cant</th>
+                                        <th class="text-end pe-3">Subtotal</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for item in request.session.carrito %}
+                                    <tr>
+                                        <td class="ps-3 small align-middle">
+                                            {{ item.nombre }}
+                                            <a href="{% url 'facturacion_eliminar_item' forloop.counter0 %}" class="text-danger ms-2 text-decoration-none fw-bold">×</a>
+                                        </td>
+                                        <td class="align-middle text-center">
+                                            <div class="d-flex justify-content-center align-items-center gap-1">
+                                                <a href="{% url 'facturacion_restar_item' forloop.counter0 %}" class="btn btn-sm btn-outline-secondary py-0 px-2 fw-bold">-</a>
+                                                <span class="fw-bold">{{ item.cantidad }}</span>
+                                                <a href="{% url 'facturacion_sumar_item' forloop.counter0 %}" class="btn btn-sm btn-outline-secondary py-0 px-2 fw-bold">+</a>
+                                            </div>
+                                        </td>
+                                        <td class="text-end pe-3 align-middle fw-bold">C$ {{ item.subtotal }}</td>
+                                    </tr>
                                     {% empty %}
-                                        {% if search_cliente_query %}
-                                            <span class="small text-danger ms-2">No encontrado.</span>
-                                        {% else %}
-                                            <span class="small text-muted ms-2 fst-italic">Busca para seleccionar...</span>
-                                        {% endif %}
+                                    <tr>
+                                        <td colspan="3" class="text-center py-5 text-muted">
+                                            <i class="bi bi-basket" style="font-size: 2rem; opacity: 0.5;"></i><br>Carrito Vacío
+                                        </td>
+                                    </tr>
                                     {% endfor %}
-                                    <input type="hidden" id="hidden_cliente_seleccionado" name="cliente_seleccionado_persist" value="{{ cliente_seleccionado }}">
-                                </div>
+                                </tbody>
+                            </table>
+                        </div>
+
+                        <div class="p-3 bg-white border-top shadow-lg" style="z-index: 10;">
+                            <div class="input-group mb-2">
+                                <span class="input-group-text bg-white border-0 ps-0 text-muted"><i class="bi bi-truck"></i> Envío C$:</span>
+                                <input type="number" name="costo_envio" id="input_envio" class="form-control text-end border-0 border-bottom fw-bold text-primary" placeholder="0" step="0.01">
                             </div>
 
-                            <div class="col-md-7">
-                                <div class="d-flex justify-content-between align-items-end mb-2">
-                                    <div class="text-end w-50 pe-2">
-                                        <label class="form-label small fw-bold text-muted mb-0">TOTAL A PAGAR</label>
-                                        <div class="input-group input-group-lg">
-                                            <input type="text" class="form-control bg-transparent border-0 fw-bold text-success text-end p-0 fs-2 total-display" 
-                                                   id="total-pagar-input" value="C$ {{ total_factura|floatformat:2 }}" readonly>
-                                        </div>
-                                    </div>
-                                    <div class="w-50 ps-2">
-                                        <label class="form-label small fw-bold text-muted mb-1">4. PAGA CON:</label>
-                                        <div class="input-group">
-                                            <span class="input-group-text text-success border-end-0">C$</span>
-                                            <input type="number" step="0.01" class="form-control fw-bold border-start-0 ps-0" 
-                                                   name="monto_pagado" id="input_monto_pagado" 
-                                                   value="{{ monto_pagado_previo }}" placeholder="0.00" required>
-                                        </div>
-                                    </div>
-                                </div>
-                                <button type="submit" class="btn btn-success w-100 py-2 fw-bold shadow-sm btn-hover-scale">
-                                    <i class="fas fa-print me-2"></i> COBRAR E IMPRIMIR
-                                </button>
+                            <div class="d-flex justify-content-between align-items-center mb-3">
+                                <h3 class="fw-bold m-0 text-dark">TOTAL:</h3>
+                                <h1 class="fw-bold text-primary m-0" id="display_total">C$ {{ total_carrito|default:"0.00" }}</h1>
                             </div>
+
+                            <div class="input-group mb-3 input-group-lg">
+                                <span class="input-group-text bg-dark text-white border-dark fw-bold">PAGO C$</span>
+                                <input type="number" id="input_pago" class="form-control text-end fw-bold border-dark" placeholder="0.00" step="0.01" style="font-size: 1.5rem;">
+                            </div>
+
+                            <div class="d-flex justify-content-between align-items-center mb-3">
+                                <span class="h5 m-0 text-muted">CAMBIO:</span>
+                                <span class="h4 m-0 fw-bold text-success" id="display_cambio">C$ 0.00</span>
+                            </div>
+
+                            <button type="submit" class="btn btn-success btn-lg w-100 fw-bold py-3" {% if not request.session.carrito %}disabled{% endif %}>
+                                ✅ COBRAR TICKET
+                            </button>
                         </div>
                     </form>
                 </div>
             </div>
         </div>
     </div>
+</div>
 
-    <div class="modal fade" id="modalClienteRapido" tabindex="-1">
-        <div class="modal-dialog modal-sm modal-dialog-centered">
-            <div class="modal-content border-0 shadow">
-                <div class="modal-header bg-primary text-white py-2">
-                    <h6 class="modal-title"><i class="fas fa-user-plus me-2"></i>Nuevo Cliente</h6>
-                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
-                </div>
-                <div class="modal-body">
-                    <form id="formClienteRapido">
-                        <div class="mb-2">
-                            <label class="small fw-bold">ID (Cédula)</label>
-                            <input type="number" class="form-control form-control-sm" id="modal_cli_id" required>
-                        </div>
-                        <div class="mb-2">
-                            <label class="small fw-bold">Nombre</label>
-                            <input type="text" class="form-control form-control-sm" id="modal_cli_nombre" required>
-                        </div>
-                        <div class="mb-2">
-                            <label class="small fw-bold">Apellido</label>
-                            <input type="text" class="form-control form-control-sm" id="modal_cli_apellido" required>
-                        </div>
-                    </form>
-                    <div id="msg-error-modal" class="text-danger mt-2 small fw-bold text-center"></div>
-                </div>
-                <div class="modal-footer py-1 bg-light">
-                    <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">Cancelar</button>
-                    <button type="button" class="btn btn-sm btn-primary" onclick="guardarClienteRapido()">Guardar</button>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <style>
-        [data-bs-theme="dark"] .header-title { color: white !important; }
-        [data-bs-theme="dark"] .search-card, 
-        [data-bs-theme="dark"] .product-list-container,
-        [data-bs-theme="dark"] .product-card,
-        [data-bs-theme="dark"] .ticket-card { 
-            background-color: #1e1e1e !important; border-color: #444 !important; 
-        }
-        [data-bs-theme="dark"] .product-name, [data-bs-theme="dark"] .form-check-label { color: white !important; }
-        [data-bs-theme="dark"] .input-group-text { background-color: #333 !important; color: white !important; border-color: #444 !important; }
-        [data-bs-theme="dark"] .form-control { background-color: #2c2c2c !important; color: white !important; border-color: #444 !important; }
-        [data-bs-theme="dark"] .bg-light { background-color: #2c2c2c !important; }
-        [data-bs-theme="dark"] .client-list { background-color: #2c2c2c !important; border-color: #444 !important; }
-        [data-bs-theme="dark"] .payment-area { background-color: #1e1e1e !important; border-top: 1px solid #444 !important; }
-        [data-bs-theme="dark"] .table-hover { color: #e0e0e0 !important; }
-        [data-bs-theme="dark"] .table-hover tbody tr:hover { background-color: #333; }
-        [data-bs-theme="dark"] .ticket-table thead { background-color: #333; color: white; }
-        
-        [data-bs-theme="light"] .search-card, [data-bs-theme="light"] .ticket-card { background-color: white; }
-        [data-bs-theme="light"] .product-list-container { background-color: #f8f9fa; }
-        [data-bs-theme="light"] .product-card { background-color: white; }
-        [data-bs-theme="light"] .payment-area { background-color: #f8f9fa; }
-        
-        .product-card:hover { transform: translateY(-2px); transition: all 0.2s; border-left: 4px solid #0d6efd !important; }
-        .btn-hover-scale:hover { transform: scale(1.02); transition: transform 0.1s; }
-        .custom-scrollbar::-webkit-scrollbar { width: 5px; }
-        .custom-scrollbar::-webkit-scrollbar-thumb { background: #ccc; border-radius: 4px; }
-    </style>
-
-{% endblock %}
-
-{% block content_scripts %}
 <script>
-    // --- FUNCIÓN NUEVA: AUTOCOMPRA ---
-    function autoSeleccionarUsuario() {
-        var formData = new FormData();
-        formData.append('csrfmiddlewaretoken', '{{ csrf_token }}');
-
-        fetch("{% url 'facturacion_autocompra' %}", {
-            method: 'POST', body: formData, headers: {'X-Requested-With': 'XMLHttpRequest'}
-        })
-        .then(res => res.json())
-        .then(data => {
-            if(data.error) {
-                mostrarAlerta("Error: " + data.error, 'danger');
-            } else {
-                document.getElementById('input_busqueda_cliente').value = "";
-                var lista = document.getElementById('lista-clientes-container');
-                var nuevoHtml = `
-                    <div class="form-check form-check-sm px-3 bg-info-subtle rounded py-1 border border-info mb-1">
-                        <input class="form-check-input radio-cliente" type="radio" name="cliente_id" value="${data.cliente.id}" checked onchange="document.getElementById('hidden_cliente_seleccionado').value = this.value;">
-                        <label class="form-check-label small fw-bold text-dark text-truncate w-100">
-                            <i class="fas fa-user-check me-1"></i> ${data.cliente.nombre_completo}
-                        </label>
-                    </div>`;
-                lista.insertAdjacentHTML('afterbegin', nuevoHtml);
-                document.getElementById('hidden_cliente_seleccionado').value = data.cliente.id;
-                mostrarAlerta(data.mensaje, 'success');
-            }
-        })
-        .catch(err => mostrarAlerta("Error de conexión", 'danger'));
-    }
-
-    function abrirModalCliente() {
-        var modalEl = document.getElementById('modalClienteRapido');
-        var modal = new bootstrap.Modal(modalEl);
-        modal.show();
-    }
-
-    function guardarClienteRapido() {
-        var id = document.getElementById('modal_cli_id').value;
-        var nombre = document.getElementById('modal_cli_nombre').value;
-        var apellido = document.getElementById('modal_cli_apellido').value;
-        if(!id || !nombre || !apellido) { 
-            document.getElementById('msg-error-modal').innerText = "Llená todo."; 
-            return; 
-        }
-
-        var formData = new FormData();
-        formData.append('modal_cli_id', id);
-        formData.append('modal_cli_nombre', nombre);
-        formData.append('modal_cli_apellido', apellido);
-        formData.append('csrfmiddlewaretoken', '{{ csrf_token }}');
-
-        fetch("{% url 'clientes_rapido' %}", { 
-            method: 'POST', body: formData, headers: {'X-Requested-With': 'XMLHttpRequest'} 
-        })
-        .then(res => res.json())
-        .then(data => {
-            if(data.error) { 
-                document.getElementById('msg-error-modal').innerText = data.error; 
-            } else {
-                var modalEl = document.getElementById('modalClienteRapido');
-                var modal = bootstrap.Modal.getInstance(modalEl);
-                modal.hide();
-                
-                document.getElementById('formClienteRapido').reset();
-                document.getElementById('msg-error-modal').innerText = "";
-                
-                var lista = document.getElementById('lista-clientes-container');
-                var nuevoHtml = `
-                    <div class="form-check form-check-sm px-3 bg-warning-subtle rounded py-1 border border-warning mb-1">
-                        <input class="form-check-input radio-cliente" type="radio" name="cliente_id" value="${data.cliente.id}" checked onchange="document.getElementById('hidden_cliente_seleccionado').value = this.value;">
-                        <label class="form-check-label small fw-bold text-dark text-truncate w-100">
-                            ${data.cliente.nombre_completo} (NUEVO)
-                        </label>
-                    </div>`;
-                lista.insertAdjacentHTML('afterbegin', nuevoHtml);
-                document.getElementById('hidden_cliente_seleccionado').value = data.cliente.id;
-                
-                mostrarAlerta(data.mensaje, 'success');
-            }
-        });
-    }
-
-    function buscarCliente() {
-        var query = document.getElementById('input_busqueda_cliente').value;
-        var currentProdQuery = "{{ search_query }}";
-        var currentClientSel = document.getElementById('hidden_cliente_seleccionado').value;
-        var montoPagado = document.getElementById('input_monto_pagado').value;
-        window.location.href = `?q_cliente=${query}&q_producto=${currentProdQuery}&cliente_seleccionado=${currentClientSel}&monto_pagado=${montoPagado}`;
-    }
-
-    function actualizarTabla(carritoData, totalFactura) {
-        var tbody = document.getElementById('carrito-body');
-        tbody.innerHTML = "";
-        document.getElementById('cart-count').innerText = carritoData.length + " ítems";
-        document.getElementById('total-pagar-input').value = 'C$ ' + parseFloat(totalFactura).toFixed(2);
-        
-        if (carritoData.length === 0) {
-            tbody.innerHTML = `<tr><td colspan="5" class="text-center text-muted py-5"><div class="py-5"><i class="fas fa-shopping-basket fa-4x mb-3 opacity-25"></i><p>El carrito está vacío.</p></div></td></tr>`;
-            return;
-        }
-        carritoData.forEach((item, index) => {
-            var fila = `
-                <tr>
-                    <td class="ps-3 fw-500">${item.nombre}</td>
-                    <td class="text-center"><span class="badge bg-secondary border px-2">${item.cantidad}</span></td>
-                    <td class="text-end text-muted">C$ ${item.precio_unitario}</td>
-                    <td class="text-end fw-bold text-primary fs-5">C$ ${item.subtotal}</td>
-                    <td class="text-center pe-3">
-                        <button type="button" class="btn btn-outline-danger btn-sm rounded-circle border-0" onclick="eliminarProducto(${index})">
-                            <i class="fas fa-trash-alt"></i>
-                        </button>
-                    </td>
-                </tr>
-            `;
-            tbody.innerHTML += fila;
-        });
-    }
-
-    function agregarProducto(prodId) {
-        var cantInput = document.getElementById('cant_' + prodId);
-        var cantidad = cantInput ? cantInput.value : 1;
-        var formData = new FormData();
-        formData.append('producto_id', prodId);
-        formData.append('cantidad', cantidad);
-        formData.append('csrfmiddlewaretoken', '{{ csrf_token }}');
-
-        fetch("{% url 'facturacion_agregar_item' %}", {
-            method: 'POST', body: formData, headers: {'X-Requested-With': 'XMLHttpRequest'}
-        })
-        .then(res => res.json())
-        .then(data => {
-            if(data.error) {
-                mostrarAlerta(data.error, 'danger');
-            } else {
-                actualizarTabla(data.carrito, data.total_factura);
-                mostrarAlerta(data.mensaje, 'success');
-                
-                // RESET del input a 1
-                if (cantInput) { cantInput.value = 1; }
-            }
-        });
-    }
-
-    function eliminarProducto(index) {
-        fetch(`/facturacion/eliminar/${index}/`, { headers: {'X-Requested-With': 'XMLHttpRequest'} })
-        .then(res => res.json())
-        .then(data => {
-            if(data.error) mostrarAlerta(data.error, 'danger');
-            else {
-                actualizarTabla(data.carrito, data.total_factura);
-                mostrarAlerta(data.mensaje, 'warning');
-            }
-        });
-    }
-
-    var montoInput = document.getElementById('input_monto_pagado');
-    if(montoInput){ montoInput.addEventListener('input', function() { }); }
-
-    function mostrarAlerta(msg, type) {
-        var box = document.getElementById('alert-container');
-        if (box) {
-            var icon = type === 'success' ? '<i class="fas fa-check-circle me-2"></i>' : '<i class="fas fa-exclamation-circle me-2"></i>';
-            var alertHtml = `<div class="alert alert-${type} alert-dismissible fade show shadow border-0 text-start bg-white text-dark">${icon} ${msg}<button type="button" class="btn-close small" data-bs-dismiss="alert"></button></div>`;
-            box.innerHTML = alertHtml; 
-            setTimeout(() => { var alerts = box.querySelectorAll('.alert'); alerts.forEach(a => { var bs = new bootstrap.Alert(a); bs.close(); }); }, 3000);
-        } else { alert(msg); }
-    }
-    
     document.addEventListener('DOMContentLoaded', function() {
-        var totalInput = document.getElementById('total-pagar-input');
-        if (totalInput && totalInput.value.includes('C$ C$')) {
-            totalInput.value = totalInput.value.replace('C$ C$', 'C$');
+        const subtotalBase = parseFloat("{{ total_carrito|default:0 }}");
+        const inputEnvio = document.getElementById('input_envio');
+        const inputPago = document.getElementById('input_pago');
+        const displayTotal = document.getElementById('display_total');
+        const displayCambio = document.getElementById('display_cambio');
+
+        function calcular() {
+            let envio = inputEnvio.value === "" ? 0 : parseFloat(inputEnvio.value);
+            let pago = inputPago.value === "" ? 0 : parseFloat(inputPago.value);
+            let totalFinal = subtotalBase + envio;
+            let cambio = pago - totalFinal;
+
+            displayTotal.innerText = "C$ " + totalFinal.toFixed(2);
+            
+            if (pago > 0) {
+                if (cambio < 0) {
+                    displayCambio.innerText = "Falta: C$ " + Math.abs(cambio).toFixed(2);
+                    displayCambio.className = "h4 m-0 fw-bold text-danger"; 
+                } else {
+                    displayCambio.innerText = "C$ " + cambio.toFixed(2);
+                    displayCambio.className = "h4 m-0 fw-bold text-success";
+                }
+            } else {
+                displayCambio.innerText = "C$ 0.00";
+                displayCambio.className = "h4 m-0 fw-bold text-muted";
+            }
         }
-        
-        document.querySelectorAll('.radio-cliente').forEach(r => {
-            r.addEventListener('change', function() { document.getElementById('hidden_cliente_seleccionado').value = this.value; });
-        });
+        inputEnvio.addEventListener('input', calcular);
+        inputPago.addEventListener('input', calcular);
     });
 </script>
+
 {% endblock %}

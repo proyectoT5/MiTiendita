@@ -1,182 +1,157 @@
 {% extends 'tienda/base.html' %}
-{% block title %}Reporte de Ventas{% endblock %}
+{% block title %}Reportes Gerenciales{% endblock %}
 
 {% block content %}
-<style>
-    .chart-container { position: relative; height: 350px; width: 100%; }
-    .header-reporte { border-bottom: 1px solid #dee2e6; padding: 1rem; font-weight: bold; transition: all 0.3s; }
-
-    /* Temas */
-    [data-bs-theme="light"] .header-reporte { background-color: white; color: #212529; }
-    [data-bs-theme="dark"] .header-reporte { background-color: #1e1e1e; color: #ffffff; border-color: #444; }
-    
-    /* Estilo Tarjetas de Reporte */
-    .card-report { position: relative; overflow: hidden; border: 0; color: white; transition: transform 0.3s; }
-    .card-report:hover { transform: translateY(-5px); }
-    .card-report .icon-bg { position: absolute; right: 10px; bottom: 10px; opacity: 0.2; font-size: 4rem; transform: rotate(-15deg); }
-
-    /* Impresión */
-    @media print {
-        body * { visibility: hidden; }
-        .navbar, .btn, #darkModeToggle, #alert-container { display: none !important; }
-        @page { margin: 1.5cm; size: auto; }
-        .print-area { visibility: visible; position: absolute; top: 0; left: 0; width: 100%; }
-        .print-area * { visibility: visible; }
-        body { background-color: white !important; color: black !important; }
-        .card { border: 1px solid #000 !important; background-color: transparent !important; box-shadow: none !important; }
-        .text-white { color: black !important; }
-        .bg-primary, .bg-success, .bg-warning, .bg-info { background-color: transparent !important; border-bottom: 1px solid #000 !important; }
-        .print-header { display: block !important; margin-bottom: 20px; border-bottom: 2px solid black; padding-bottom: 10px; }
-        .screen-header { display: none !important; }
-        .header-reporte { background-color: white !important; color: black !important; border-bottom: 1px solid black !important; }
-        .icon-bg { display: none !important; } /* Ocultar iconos de fondo al imprimir */
-    }
-    .print-header { display: none; }
-</style>
-
-<div class="container mt-4">
-    
-    <div class="d-flex justify-content-end mb-4 no-print">
-        <button onclick="window.print()" class="btn btn-primary shadow-sm">
-            <i class="fas fa-print me-2"></i> Imprimir Reporte
-        </button>
+<div class="container-fluid py-4">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h2 class="fw-bold text-dark"><i class="fas fa-chart-line me-2 text-primary"></i>Panel de Control</h2>
+        <span class="badge bg-light text-dark border p-2">{% now "d/m/Y" %}</span>
     </div>
 
-    <div class="print-area">
-        
-        <div class="print-header text-center">
-            <h2>MI TIENDITA - REPORTE DE VENTAS</h2>
-            <p class="mb-0">Generado por: <strong>{{ nombre_usuario }}</strong> ({{ rol_usuario }})</p>
-            <small>Fecha: {% now "d/m/Y H:i A" %}</small>
-        </div>
-
-        <div class="screen-header mb-4">
-            {% if rol_usuario == 'Admin' %}
-                <h2 class="fw-bold"><i class="fas fa-chart-pie me-2 text-primary"></i>Reporte Global</h2>
-                <p class="text-muted">Resumen financiero del negocio.</p>
-            {% else %}
-                <h2 class="fw-bold"><i class="fas fa-user-clock me-2 text-info"></i>Mi Reporte Personal</h2>
-                <p class="text-muted">Tus métricas de venta.</p>
-            {% endif %}
-        </div>
-
-        <div class="row mb-4 g-3">
-            <div class="col-md-4">
-                <div class="card h-100 shadow-sm card-report" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);">
-                    <div class="card-body">
-                        <div class="d-flex justify-content-between align-items-start">
-                            <div>
-                                <h6 class="text-uppercase mb-1 opacity-75 fw-bold">Ventas de Hoy</h6>
-                                <h2 class="fw-bold mb-0">C$ {{ reporte.hoy.total|floatformat:2 }}</h2>
-                                <span class="badge bg-white text-primary mt-2 bg-opacity-75">
-                                    <i class="fas fa-receipt"></i> {{ reporte.hoy.cant }} Facturas
-                                </span>
-                            </div>
-                            <i class="fas fa-calendar-day icon-bg"></i>
-                        </div>
+    <div class="row g-3 mb-4">
+        <div class="col-md-4">
+            <div class="card shadow-sm border-start border-4 border-success h-100">
+                <div class="card-body d-flex justify-content-between align-items-center">
+                    <div>
+                        <h6 class="text-uppercase text-muted small fw-bold mb-1">Ventas de Hoy</h6>
+                        <h3 class="fw-bold text-success mb-0">C$ {{ venta_hoy|floatformat:2 }}</h3>
                     </div>
-                </div>
-            </div>
-
-            <div class="col-md-4">
-                <div class="card h-100 shadow-sm card-report" style="background: linear-gradient(135deg, #2af598 0%, #009efd 100%);">
-                    <div class="card-body">
-                        <div class="d-flex justify-content-between align-items-start">
-                            <div>
-                                <h6 class="text-uppercase mb-1 opacity-75 fw-bold">Esta Semana</h6>
-                                <h2 class="fw-bold mb-0">C$ {{ reporte.semana.total|floatformat:2 }}</h2>
-                                <span class="badge bg-white text-info mt-2 text-dark">
-                                    <i class="fas fa-receipt"></i> {{ reporte.semana.cant }} Facturas
-                                </span>
-                            </div>
-                            <i class="fas fa-calendar-week icon-bg"></i>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            <div class="col-md-4">
-                <div class="card h-100 shadow-sm card-report" style="background: linear-gradient(135deg, #fed373 0%, #f15245 100%);">
-                    <div class="card-body">
-                        <div class="d-flex justify-content-between align-items-start">
-                            <div>
-                                <h6 class="text-uppercase mb-1 opacity-75 fw-bold">Este Mes</h6>
-                                <h2 class="fw-bold mb-0">C$ {{ reporte.mes.total|floatformat:2 }}</h2>
-                                <span class="badge bg-white text-danger mt-2">
-                                    <i class="fas fa-receipt"></i> {{ reporte.mes.cant }} Facturas
-                                </span>
-                            </div>
-                            <i class="fas fa-calendar-alt icon-bg"></i>
-                        </div>
+                    <div class="bg-success bg-opacity-10 p-3 rounded-circle text-success">
+                        <i class="fas fa-cash-register fa-2x"></i>
                     </div>
                 </div>
             </div>
         </div>
 
-        <div class="card shadow-sm mb-4 border-0">
-            <div class="header-reporte">
-                <i class="fas fa-chart-line me-2"></i> Tendencia de Ventas (Últimos 7 Días)
-            </div>
-            <div class="card-body">
-                <div class="chart-container">
-                    <canvas id="salesChart"></canvas>
+        <div class="col-md-4">
+            <div class="card shadow-sm border-start border-4 border-primary h-100">
+                <div class="card-body d-flex justify-content-between align-items-center">
+                    <div>
+                        <h6 class="text-uppercase text-muted small fw-bold mb-1">Acumulado del Mes</h6>
+                        <h3 class="fw-bold text-primary mb-0">C$ {{ venta_mes|floatformat:2 }}</h3>
+                    </div>
+                    <div class="bg-primary bg-opacity-10 p-3 rounded-circle text-primary">
+                        <i class="fas fa-calendar-alt fa-2x"></i>
+                    </div>
                 </div>
             </div>
         </div>
 
-        <div class="mt-5 pt-3 border-top text-center text-muted small">
-            <p>Reporte generado por el sistema administrativo "Mi Tiendita".</p>
+        <div class="col-md-4">
+            <div class="card shadow-sm border-start border-4 border-danger h-100">
+                <div class="card-body d-flex justify-content-between align-items-center">
+                    <div>
+                        <h6 class="text-uppercase text-muted small fw-bold mb-1">Stock Crítico</h6>
+                        <h3 class="fw-bold text-danger mb-0">{{ bajos_stock }} Prod.</h3>
+                    </div>
+                    <div class="bg-danger bg-opacity-10 p-3 rounded-circle text-danger">
+                        <i class="fas fa-exclamation-triangle fa-2x"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row g-3 mb-4">
+        <div class="col-lg-8">
+            <div class="card shadow border-0 h-100">
+                <div class="card-header bg-white py-3">
+                    <h6 class="m-0 fw-bold text-primary"><i class="fas fa-chart-area me-1"></i> Tendencia de Ventas (Últimos 7 días)</h6>
+                </div>
+                <div class="card-body">
+                    <canvas id="chartVentas" height="100"></canvas>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-lg-4">
+            <div class="card shadow border-0 h-100">
+                <div class="card-header bg-white py-3">
+                    <h6 class="m-0 fw-bold text-dark"><i class="fas fa-crown me-1 text-warning"></i> Top 5 Más Vendidos</h6>
+                </div>
+                <div class="card-body position-relative">
+                    <canvas id="chartProductos" height="200"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="card shadow border-0">
+        <div class="card-header bg-danger text-white py-2">
+            <h6 class="m-0 fw-bold"><i class="fas fa-siren-on me-2"></i>Urge Reabastecer (Stock Bajo)</h6>
+        </div>
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-striped mb-0 small">
+                    <thead class="bg-light">
+                        <tr>
+                            <th class="ps-3">Producto</th>
+                            <th class="text-center">Stock Actual</th>
+                            <th class="text-end pe-3">Acción</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for item in lista_bajos_stock %}
+                        <tr>
+                            <td class="ps-3 fw-bold text-dark">{{ item.Nombre }}</td>
+                            <td class="text-center">
+                                <span class="badge bg-danger">{{ item.Cantidad }} uds</span>
+                            </td>
+                            <td class="text-end pe-3">
+                                <a href="{% url 'proveedor_producto_lista' %}?q={{ item.Nombre|urlencode }}" class="btn btn-sm btn-outline-danger py-0" style="font-size: 0.8rem;"> Comprar
+                            </a>
+                            </td>
+                        </tr>
+                        {% empty %}
+                        <tr>
+                            <td colspan="3" class="text-center py-3 text-muted">
+                                ¡Todo en orden! No hay inventario bajo.
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
         </div>
     </div>
 </div>
-{% endblock %}
 
-{% block content_scripts %}
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <script>
-    const ctx = document.getElementById('salesChart');
-    const labels = {{ chart_labels|safe }};
-    const data = {{ chart_data|safe }};
-    const isDark = document.documentElement.getAttribute('data-bs-theme') === 'dark';
-    const textColor = isDark ? '#ffffff' : '#666666'; 
-    const gridColor = isDark ? '#444444' : '#e0e0e0';
+    // Gráfico de Ventas
+    const ctxVentas = document.getElementById('chartVentas').getContext('2d');
+    let gradient = ctxVentas.createLinearGradient(0, 0, 0, 400);
+    gradient.addColorStop(0, 'rgba(13, 110, 253, 0.5)');
+    gradient.addColorStop(1, 'rgba(13, 110, 253, 0.0)');
 
-    if (ctx) {
-        new Chart(ctx, {
-            type: 'line',
-            data: {
-                labels: labels,
-                datasets: [{
-                    label: 'Ventas (C$)',
-                    data: data,
-                    borderColor: '#4e73df',
-                    backgroundColor: 'rgba(78, 115, 223, 0.1)',
-                    borderWidth: 3,
-                    pointBackgroundColor: '#4e73df',
-                    pointBorderColor: '#fff',
-                    pointRadius: 5,
-                    tension: 0.3,
-                    fill: true
-                }]
-            },
-            options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                plugins: {
-                    legend: { display: false },
-                    tooltip: {
-                        callbacks: {
-                            title: function(tooltipItems) { return 'Fecha: ' + tooltipItems[0].label; },
-                            label: function(context) { return 'Total: C$ ' + context.parsed.y.toFixed(2); }
-                        }
-                    }
-                },
-                scales: {
-                    x: { grid: { display: false }, ticks: { color: textColor, font: { weight: 'bold' } } },
-                    y: { ticks: { color: textColor, callback: function(value) { return 'C$ ' + value; } }, grid: { color: gridColor, borderDash: [2] } }
-                }
-            }
-        });
-    }
+    new Chart(ctxVentas, {
+        type: 'line',
+        data: {
+            labels: {{ labels_dias_json|safe }},
+            datasets: [{
+                label: 'Ventas (C$)',
+                data: {{ data_dias_json|safe }},
+                borderColor: '#0d6efd',
+                backgroundColor: gradient,
+                borderWidth: 3,
+                fill: true,
+                tension: 0.4
+            }]
+        }
+    });
+
+    // Gráfico de Productos
+    const ctxProd = document.getElementById('chartProductos').getContext('2d');
+    new Chart(ctxProd, {
+        type: 'doughnut',
+        data: {
+            labels: {{ labels_prod_json|safe }},
+            datasets: [{
+                data: {{ data_prod_json|safe }},
+                backgroundColor: ['#4e73df', '#1cc88a', '#36b9cc', '#f6c23e', '#e74a3b']
+            }]
+        },
+        options: { maintainAspectRatio: false }
+    });
 </script>
 {% endblock %}

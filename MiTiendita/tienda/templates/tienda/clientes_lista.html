@@ -1,0 +1,94 @@
+{% extends 'tienda/base.html' %}
+{% load static %}
+
+{% block content %}
+<div class="container mt-4">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h2 class="text-dark">Lista de Clientes</h2>
+        <a href="{% url 'clientes_agregar' %}" class="btn btn-primary shadow-sm" style="border-radius: 10px;">
+            <i class="fas fa-plus me-2"></i>Nuevo Cliente
+        </a>
+    </div>
+
+    <div class="card shadow-sm border-0" style="border-radius: 15px;">
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-hover align-middle mb-0">
+                    <thead class="bg-light">
+                        <tr>
+                            <th class="ps-4 py-3 text-muted" style="width: 100px;">ID</th>
+                            <th class="py-3 text-muted">NOMBRE</th>
+                            <th class="py-3 text-muted">APELLIDO</th>
+                            <th class="py-3 text-muted">CORREO</th>
+                            <th class="py-3 text-muted">TELÉFONO</th>
+                            <th class="py-3 text-muted text-center">ESTADO</th>
+                            <th class="pe-4 py-3 text-end text-muted">ACCIONES</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for cli in clientes %}
+                        <tr>
+                            <td class="ps-4 fw-bold text-secondary">{{ cli.Id_Cliente }}</td>
+                            
+                            <td class="fw-bold">{{ cli.Nombre }}</td>
+                            
+                            <td>{{ cli.Apellido|default:"---" }}</td>
+                            
+                            <td class="text-muted small">{{ cli.correo|default:"N/A" }}</td>
+                            
+                            <td>
+                                <span class="fw-bold text-dark">
+                                    {{ cli.telefono_con_guion }}
+                                </span>
+                            </td>
+
+                            <td class="text-center">
+                                {% if cli.Activo == 1 %}
+                                    <span class="badge bg-success-soft text-success px-3" style="background-color: #e8f5e9; border-radius: 8px;">Activo</span>
+                                {% else %}
+                                    <span class="badge bg-danger-soft text-danger px-3" style="background-color: #ffebee; border-radius: 8px;">Inactivo</span>
+                                {% endif %}
+                            </td>
+
+                            <td class="pe-4 text-end">
+                                <div class="btn-group shadow-sm" style="border-radius: 8px; overflow: hidden;">
+                                    <a href="#" class="btn btn-sm btn-white text-warning border">
+                                        <i class="fas fa-edit"></i>
+                                    </a>
+                                    <a href="#" class="btn btn-sm btn-white text-danger border">
+                                        <i class="fas fa-trash"></i>
+                                    </a>
+                                </div>
+                            </td>
+                        </tr>
+                        {% empty %}
+                        <tr>
+                            <td colspan="7" class="text-center py-5">
+                                <img src="{% static 'img/empty-clients.png' %}" alt="" style="width: 80px; opacity: 0.3;">
+                                <p class="text-muted mt-2">No hay clientes registrados.</p>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+    /* Pequeño ajuste para que se vea premium como tu diseño */
+    .table thead th {
+        font-size: 0.75rem;
+        letter-spacing: 1px;
+        text-transform: uppercase;
+        border-bottom: 1px solid #f0f0f0;
+    }
+    .table tbody tr {
+        transition: all 0.2s;
+    }
+    .table tbody tr:hover {
+        background-color: #f8fbff !important;
+    }
+</style>
+{% endblock %}

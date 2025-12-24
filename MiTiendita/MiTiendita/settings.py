@@ -1,13 +1,14 @@
 """
 Django settings for MiTiendita project.
-CORREGIDO PARA: Ing. Leonardo
+CONFIGURACIÓN PORTÁTIL (Funciona en cualquier PC)
 """
 
 from pathlib import Path
 from decouple import config
-import os  # <--- Agregamos esto para manejar rutas fácil
+import os
 
-# Build paths inside the project like this: BASE_DIR / 'subdir'.
+# 1. BASE_DIR: Es la carpeta principal de tu proyecto.
+# Django la detecta automáticamente donde sea que esté guardado el proyecto.
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 # SECURITY WARNING: keep the secret key used in production secret!
@@ -46,8 +47,10 @@ TEMPLATES = [
     {
         'BACKEND': 'django.template.backends.django.DjangoTemplates',
         'DIRS': [
-            # CORREGIDO: Apunta a la carpeta 'templates', NO al archivo .html
-            r'C:\Users\Ing. Leonardo\OneDrive - UNI\Escritorio\Mitiendita\MiTiendita\tienda\templates',
+            # --- CORRECCIÓN CLAVE ---
+            # En lugar de "C:\Users\...", usamos BASE_DIR.
+            # Esto le dice a Django: "Busca la carpeta templates DENTRO de la carpeta tienda".
+            os.path.join(BASE_DIR, 'tienda', 'templates'),
         ],
         'APP_DIRS': True,
         'OPTIONS': {
@@ -95,38 +98,40 @@ AUTH_PASSWORD_VALIDATORS = [
 ]
 
 # Internationalization
-LANGUAGE_CODE = 'es-ni' # Lo cambié a Español-Nicaragua para que te salgan fechas latinas
-TIME_ZONE = 'America/Managua' # Ajustado a tu zona horaria
+LANGUAGE_CODE = 'es-ni' 
+TIME_ZONE = 'America/Managua'
 USE_I18N = True
 USE_TZ = True
 
-# Static files (CSS, JavaScript, Images)
+# --- ARCHIVOS ESTÁTICOS (CSS, JS, IMÁGENES FIJAS) ---
 STATIC_URL = '/static/'
 STATICFILES_DIRS = [
-    BASE_DIR / "static",
-    "MiTiendita/static/",
-    BASE_DIR / "Imagenes",
+    os.path.join(BASE_DIR, "static"),
+    os.path.join(BASE_DIR, "MiTiendita", "static"),
+    os.path.join(BASE_DIR, "Imagenes"),
 ]
 
-# --- CONFIGURACIÓN DE CORREO GMAIL ---
+# --- ARCHIVOS MULTIMEDIA (FOTOS QUE SUBE LA DUEÑA) ---
+# 1. URL pública para ver la foto en el navegador
+MEDIA_URL = '/media/'
+
+# 2. RUTA FÍSICA donde se guardan las fotos en el disco duro.
+# Usando os.path.join(BASE_DIR, 'media'), Django creará la carpeta "media"
+# automáticamente dentro de tu proyecto, en cualquier computadora.
+MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
+
+
+# Configuración de Correo
 EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
 EMAIL_HOST = 'smtp.gmail.com'
 EMAIL_PORT = 587
 EMAIL_USE_TLS = True
-EMAIL_HOST_USER = 'antonychavarria2006@gmail.com' 
-EMAIL_HOST_PASSWORD = 'bnff jesz qwrv delq'  
+EMAIL_HOST_USER = 'antonychavarria2006@gmail.com'
+EMAIL_HOST_PASSWORD = 'bnff jesz qwrv delq'
 DEFAULT_FROM_EMAIL = 'Mi Tiendita <antonychavarria2006@gmail.com>'
-
-# --- CONFIGURACIÓN DE FOTOS (MEDIA) ---
-# Esto faltaba y es necesario para subir fotos de productos
-MEDIA_URL = '/media/'
-MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 LOGIN_URL = '/login/'
 LOGIN_REDIRECT_URL = '/'
 LOGOUT_REDIRECT_URL = '/login/'
-
-
-

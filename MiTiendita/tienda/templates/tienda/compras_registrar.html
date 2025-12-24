@@ -1,0 +1,47 @@
+{% extends 'tienda/base.html' %}
+
+{% block content %}
+<div class="container mt-4">
+    <div class="card shadow border-0" style="border-radius: 15px;">
+        <div class="card-body p-5">
+            <h2 class="mb-4 text-primary"><i class="fas fa-shopping-cart me-2"></i>Nueva Compra</h2>
+            
+            <div class="row">
+                <div class="col-md-8 mb-3">
+                    <label class="fw-bold">Buscar Producto (Nombre o ID)</label>
+                    <input type="text" id="txt-buscar-producto" class="form-control form-control-lg bg-light border-0" placeholder="Empieza a escribir..." style="border-radius: 10px;">
+                </div>
+                
+                <div class="col-md-4 mb-3">
+                    <label class="fw-bold">Precio Unitario</label>
+                    <input type="text" id="precio-producto" class="form-control form-control-lg bg-light" readonly style="border-radius: 10px;">
+                    <input type="hidden" id="id-producto-seleccionado">
+                </div>
+            </div>
+            
+            <button type="button" class="btn btn-success w-100 btn-lg shadow-sm" style="border-radius: 10px;">
+                <i class="fas fa-plus me-2"></i>Añadir a la Compra
+            </button>
+        </div>
+    </div>
+</div>
+
+<link rel="stylesheet" href="https://code.jquery.com/ui/1.13.2/themes/base/jquery-ui.css">
+<script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+<script src="https://code.jquery.com/ui/1.13.2/jquery-ui.min.js"></script>
+
+<script>
+    $(document).ready(function() {
+        $("#txt-buscar-producto").autocomplete({
+            source: "{% url 'buscar_producto_ajx' %}",
+            minLength: 2, // Empieza a buscar tras 2 letras
+            select: function(event, ui) {
+                // Cuando el usuario selecciona un producto:
+                $("#id-producto-seleccionado").val(ui.item.id);
+                $("#precio-producto").val(ui.item.precio);
+                console.log("Seleccionado ID: " + ui.item.id);
+            }
+        });
+    });
+</script>
+{% endblock %}

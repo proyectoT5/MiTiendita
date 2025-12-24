@@ -1,96 +1,55 @@
 {% extends 'tienda/base.html' %}
-{% block title %}Agregar Proveedor{% endblock %}
+{% load static %}
 
 {% block content %}
-    <h1 class="h2 mb-4">Agregar Nuevo Proveedor</h1>
-
-    <div class="card shadow-sm" style="max-width: 700px; margin: 0 auto;">
-        <div class="card-body">
-            <form method="POST" id="formProveedor" novalidate>
-                {% csrf_token %}
-                
-                <div class="mb-3">
-                    <label class="form-label fw-bold">ID del Proveedor</label>
-                    <input type="number" class="form-control" name="id_Proveedor" required>
+<div class="container mt-4">
+    <div class="row justify-content-center">
+        <div class="col-md-10">
+            <h2 class="mb-4 text-dark">Agregar Nuevo Proveedor</h2>
+            <div class="card shadow-sm border-0" style="border-radius: 15px;">
+                <div class="card-body p-5">
+                    <form method="POST" id="formProveedor">
+                        {% csrf_token %}
+                        <div class="row">
+                            <div class="col-md-12 mb-4">
+                                <label class="form-label fw-bold">Nombre de la Empresa</label>
+                                <input type="text" name="nombre_proveedor" class="form-control form-control-lg bg-light border-0" required style="border-radius: 10px;">
+                            </div>
+                            <div class="col-md-6 mb-4">
+                                <label class="form-label fw-bold">Correo (Opcional)</label>
+                                <input type="email" name="correo" class="form-control form-control-lg bg-light border-0" style="border-radius: 10px;">
+                            </div>
+                            <div class="col-md-6 mb-4">
+                                <label class="form-label fw-bold">Dirección</label>
+                                <input type="text" name="Direccion" class="form-control form-control-lg bg-light border-0" style="border-radius: 10px;">
+                            </div>
+                            <div class="col-md-6 mb-4">
+                                <label class="form-label fw-bold text-primary">Teléfono Principal</label>
+                                <input type="text" name="numero_telefono_P_1" class="form-control form-control-lg bg-light border-0 input-tel" placeholder="0000-0000" maxlength="9" style="border-radius: 10px;">
+                            </div>
+                            <div class="col-md-6 mb-4">
+                                <label class="form-label fw-bold text-muted">Teléfono Secundario</label>
+                                <input type="text" name="numero_telefono_P_2" class="form-control form-control-lg bg-light border-0 input-tel" placeholder="0000-0000" maxlength="9" style="border-radius: 10px;">
+                            </div>
+                        </div>
+                        <div class="d-flex justify-content-end mt-3 gap-2">
+                            <a href="{% url 'proveedores_lista' %}" class="btn btn-secondary btn-lg px-4" style="border-radius: 10px;">Cancelar</a>
+                            <button type="submit" class="btn btn-primary btn-lg px-4" style="border-radius: 10px;">Guardar Proveedor</button>
+                        </div>
+                    </form>
                 </div>
-
-                <div class="mb-3">
-                    <label class="form-label fw-bold">Nombre de la Empresa</label>
-                    <input type="text" class="form-control" name="nombre_proveedor" required>
-                </div>
-
-                <div class="row mb-3">
-                    <div class="col-md-6">
-                        <label class="form-label fw-bold">Correo (Opcional)</label>
-                        <input type="email" class="form-control" id="inputCorreo" name="correo">
-                        <div class="invalid-feedback">Correo inválido.</div>
-                    </div>
-                    <div class="col-md-6">
-                        <label class="form-label fw-bold">Dirección</label>
-                        <input type="text" class="form-control" name="Direccion">
-                    </div>
-                </div>
-
-                <div class="row mb-3">
-                    <div class="col-md-6">
-                        <label class="form-label fw-bold">Teléfono Principal</label>
-                        <input type="text" class="form-control" name="numero_telefono_P_1" 
-                               placeholder="8888-8888" maxlength="9"
-                               oninput="formatoTelefono(this)">
-                    </div>
-                    <div class="col-md-6">
-                        <label class="form-label fw-bold">Teléfono Secundario</label>
-                        <input type="text" class="form-control" name="numero_telefono_P_2" 
-                               placeholder="2222-2222" maxlength="9"
-                               oninput="formatoTelefono(this)">
-                    </div>
-                </div>
-
-                <div class="text-end">
-                    <a href="{% url 'proveedores_lista' %}" class="btn btn-secondary">Cancelar</a>
-                    <button type="submit" class="btn btn-primary">Guardar Proveedor</button>
-                </div>
-            </form>
+            </div>
         </div>
     </div>
-{% endblock %}
+</div>
 
-{% block content_scripts %}
 <script>
-    // 1. FORMATO TELEFONO (XXXX-XXXX)
-    function formatoTelefono(input) {
-        let numero = input.value.replace(/\D/g, ''); // Solo números
-        if (numero.length > 8) { numero = numero.substring(0, 8); }
-        if (numero.length > 4) {
-            input.value = numero.substring(0, 4) + '-' + numero.substring(4);
-        } else {
-            input.value = numero;
-        }
-    }
-
-    // 2. Validación Correo
-    const form = document.getElementById('formProveedor');
-    const correoInput = document.getElementById('inputCorreo');
-    const dominiosValidos = ['gmail.com', 'hotmail.com', 'yahoo.com', 'outlook.com', 'live.com', 'icloud.com', 'yahoo.es', 'hotmail.es', 'outlook.es'];
-
-    form.addEventListener('submit', function(event) {
-        const correo = correoInput.value.trim().toLowerCase();
-        if (correo.length > 0) {
-            let esValido = false;
-            for (let dominio of dominiosValidos) {
-                if (correo.endsWith('@' + dominio)) { esValido = true; break; }
-            }
-            if (!esValido) {
-                event.preventDefault();
-                event.stopPropagation();
-                correoInput.classList.add('is-invalid');
-            } else {
-                correoInput.classList.remove('is-invalid');
-            }
-        }
-    });
-    correoInput.addEventListener('input', function() {
-        if (this.classList.contains('is-invalid')) { this.classList.remove('is-invalid'); }
+    // Lógica para poner el guion automático mientras escribes
+    document.querySelectorAll('.input-tel').forEach(function(el) {
+        el.addEventListener('input', function (e) {
+            let x = e.target.value.replace(/\D/g, '').match(/(\d{0,4})(\d{0,4})/);
+            e.target.value = !x[2] ? x[1] : x[1] + '-' + x[2];
+        });
     });
 </script>
 {% endblock %}

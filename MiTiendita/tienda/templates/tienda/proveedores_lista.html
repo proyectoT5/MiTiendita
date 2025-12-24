@@ -1,0 +1,91 @@
+{% extends 'tienda/base.html' %}
+{% load static %}
+
+{% block content %}
+<div class="container mt-4">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h2 class="text-dark">Lista de Proveedores</h2>
+        <a href="{% url 'proveedores_agregar' %}" class="btn btn-primary shadow-sm" style="border-radius: 10px;">
+            <i class="fas fa-plus me-2"></i>Nuevo Proveedor
+        </a>
+    </div>
+
+    <div class="card shadow-sm border-0" style="border-radius: 15px;">
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-hover align-middle mb-0">
+                    <thead class="bg-light">
+                        <tr>
+                            <th class="ps-4 py-3 text-muted" style="width: 100px;">ID</th>
+                            <th class="py-3 text-muted">EMPRESA / PROVEEDOR</th>
+                            <th class="py-3 text-muted">CORREO</th>
+                            <th class="py-3 text-muted">DIRECCIÓN</th>
+                            <th class="py-3 text-muted">TELÉFONO</th>
+                            <th class="pe-4 py-3 text-end text-muted">ACCIONES</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for prov in proveedores %}
+                        <tr>
+                            <td class="ps-4 fw-bold text-primary">#{{ prov.id_Proveedor }}</td>
+                            
+                            <td class="fw-bold text-dark">{{ prov.nombre_proveedor }}</td>
+                            
+                            <td class="text-muted small">{{ prov.correo|default:"N/A" }}</td>
+                            
+                            <td class="text-muted small">{{ prov.Direccion|default:"N/A" }}</td>
+                            
+                            <td>
+                                <span class="badge bg-light text-dark border px-2 py-2" style="font-size: 0.9rem;">
+                                    <i class="fas fa-phone-alt text-primary me-1"></i>
+                                    {{ prov.telefono_con_guion }}
+                                </span>
+                            </td>
+
+                            <td class="pe-4 text-end">
+                                <div class="btn-group shadow-sm" style="border-radius: 8px; overflow: hidden;">
+                                    <a href="#" class="btn btn-sm btn-white text-warning border" title="Editar">
+                                        <i class="fas fa-edit"></i>
+                                    </a>
+                                    <a href="#" class="btn btn-sm btn-white text-danger border" title="Eliminar">
+                                        <i class="fas fa-trash"></i>
+                                    </a>
+                                </div>
+                            </td>
+                        </tr>
+                        {% empty %}
+                        <tr>
+                            <td colspan="6" class="text-center py-5">
+                                <p class="text-muted mt-2">No hay proveedores registrados todavía.</p>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+    /* Estilos para mantener la estética "mostrosa" */
+    .table thead th {
+        font-size: 0.75rem;
+        letter-spacing: 1px;
+        text-transform: uppercase;
+        border-bottom: 1px solid #f0f0f0;
+    }
+    .table tbody tr {
+        transition: all 0.2s;
+    }
+    .table tbody tr:hover {
+        background-color: #f8fbff !important;
+    }
+    .btn-white {
+        background-color: #fff;
+    }
+    .btn-white:hover {
+        background-color: #f8f9fa;
+    }
+</style>
+{% endblock %}

@@ -1,10 +1,13 @@
 # tienda/views.py
+from django.db.models import Max
+from django.db.models import Q
+from django.shortcuts import render, redirect, get_object_or_404
+from django.contrib.auth.hashers import make_password
 from django.core.files.storage import FileSystemStorage
-from .models import Productos
-import uuid # Para generar códigos únicos
-from django.core.mail import send_mail # Para enviar el correo
+from .models import Productos, Clientes, Proveedores, ProveedorProducto, Facturas, DetalleFactura
+import uuid 
+from django.core.mail import send_mail 
 from django.urls import reverse
-from django.shortcuts import render, redirect
 from django.db import connection, transaction
 from django.contrib import messages
 from django.conf import settings 
@@ -14,7 +17,6 @@ import os
 import datetime 
 from decimal import Decimal 
 import json
-from django.core.mail import send_mail  
 
 # --- DECORADORES ---
 def login_requerido(view_func):
@@ -104,78 +106,64 @@ def dashboard_view(request):
 
 @login_requerido
 def reportes_view(request):
-    rol = request.session.get('user_rol')
-    user_id = request.session.get('user_id')
+    # 1. Ventas de Hoy (Usando nombres reales de tu tabla Factura)
+    with connection.cursor() as cursor:
+        cursor.execute("""
+            SELECT ISNULL(SUM(Total), 0) 
+            FROM Factura 
+            WHERE CAST(FechaHora AS DATE) = CAST(GETDATE() AS DATE)
+        """)
+        venta_hoy = cursor.fetchone()[0]
+
+    # 2. Ventas del Mes
+    with connection.cursor() as cursor:
+        cursor.execute("""
+            SELECT ISNULL(SUM(Total), 0) 
+            FROM Factura 
+            WHERE MONTH(FechaHora) = MONTH(GETDATE()) 
+            AND YEAR(FechaHora) = YEAR(GETDATE())
+        """)
+        venta_mes = cursor.fetchone()[0]
+
+    # 3. Productos con Stock Bajo (Usando nombres reales de tu tabla Productos)
+    lista_bajos_stock = []
+    with connection.cursor() as cursor:
+        cursor.execute("""
+            SELECT Id_Producto, Nombre, Cantidad 
+            FROM Productos 
+            WHERE Cantidad <= StockMinimo AND Activo = 1
+        """)
+        rows = cursor.fetchall()
+        for row in rows:
+            lista_bajos_stock.append({
+                'Id_Producto': row[0],
+                'Nombre': row[1],
+                'Cantidad': row[2]
+            })
+
+    bajos_stock = len(lista_bajos_stock)
+
+    # --- DATOS PARA GRÁFICOS (Ahora con datos reales de venta_hoy) ---
+    labels_dias = ["23/12"] 
+    data_dias = [float(venta_hoy)]
     
-    # Estructura de datos para guardar Cantidad y Dinero
-    data_reporte = {
-        'hoy': {'cant': 0, 'total': 0},
-        'semana': {'cant': 0, 'total': 0},
-        'mes': {'cant': 0, 'total': 0}
-    }
-    
-    chart_labels = []
-    chart_data = []
-
-    try:
-        with connection.cursor() as cursor:
-            # --- FILTRO SEGÚN ROL ---
-            # Si es Admin, no filtramos por usuario. Si es Empleado, sí.
-            filtro_user = "" 
-            params_base = []
-            
-            if rol != 'Admin':
-                filtro_user = "AND Id_Usuario = %s"
-                params_base = [user_id]
-
-            # 1. HOY
-            sql_hoy = f"SELECT COUNT(*), ISNULL(SUM(Total), 0) FROM Factura WHERE CAST(FechaHora AS DATE) = CAST(GETDATE() AS DATE) {filtro_user}"
-            cursor.execute(sql_hoy, params_base)
-            row = cursor.fetchone()
-            data_reporte['hoy']['cant'] = row[0]
-            data_reporte['hoy']['total'] = row[1]
-
-            # 2. SEMANA
-            sql_semana = f"SELECT COUNT(*), ISNULL(SUM(Total), 0) FROM Factura WHERE DATEPART(ww, FechaHora) = DATEPART(ww, GETDATE()) AND DATEPART(yy, FechaHora) = DATEPART(yy, GETDATE()) {filtro_user}"
-            cursor.execute(sql_semana, params_base)
-            row = cursor.fetchone()
-            data_reporte['semana']['cant'] = row[0]
-            data_reporte['semana']['total'] = row[1]
-
-            # 3. MES
-            sql_mes = f"SELECT COUNT(*), ISNULL(SUM(Total), 0) FROM Factura WHERE MONTH(FechaHora) = MONTH(GETDATE()) AND YEAR(FechaHora) = YEAR(GETDATE()) {filtro_user}"
-            cursor.execute(sql_mes, params_base)
-            row = cursor.fetchone()
-            data_reporte['mes']['cant'] = row[0]
-            data_reporte['mes']['total'] = row[1]
-
-            # 4. GRÁFICA (Últimos 7 días)
-            # Nota: Aquí hay que tener cuidado con los parámetros en el GROUP BY
-            sql_grafica = f"""
-                SELECT FORMAT(FechaHora, 'dd/MM') as FechaStr, SUM(Total) as Total 
-                FROM Factura 
-                WHERE FechaHora >= DATEADD(day, -7, GETDATE()) {filtro_user}
-                GROUP BY FORMAT(FechaHora, 'dd/MM'), CAST(FechaHora AS DATE) 
-                ORDER BY CAST(FechaHora AS DATE) ASC
-            """
-            cursor.execute(sql_grafica, params_base)
-            historial = dictfetchall(cursor)
-            
-            chart_labels = [h['FechaStr'] for h in historial]
-            chart_data = [float(h['Total']) for h in historial]
-
-    except Exception as e:
-        print(f"Error reportes: {e}")
+    # Podés dejar estos fijos por ahora o traerlos con otro SELECT
+    labels_prod = ["Ajo", "Achiote", "Ositos", "Zambo Chicharrón", "Ranchitas de chiles"]
+    data_prod = [4, 4, 4, 4, 3]
 
     context = {
+        'venta_hoy': venta_hoy,
+        'venta_mes': venta_mes,
+        'bajos_stock': bajos_stock,
+        'lista_bajos_stock': lista_bajos_stock,
+        'labels_dias_json': json.dumps(labels_dias),
+        'data_dias_json': json.dumps(data_dias),
+        'labels_prod_json': json.dumps(labels_prod),
+        'data_prod_json': json.dumps(data_prod),
         'nombre_usuario': request.session.get('user_nombre'),
-        'rol_usuario': rol,
-        'reporte': data_reporte, # Aquí va toda la info (cant y total)
-        'chart_labels': json.dumps(chart_labels),
-        'chart_data': json.dumps(chart_data),
+        'rol_usuario': request.session.get('user_rol'),
     }
     return render(request, 'tienda/reportes.html', context)
-
 # ==========================================
 #              PRODUCTOS
 # ==========================================
@@ -185,10 +173,22 @@ def productos_view(request):
     mostrar_desactivados = request.GET.get('mostrar_desactivados') 
     try:
         with connection.cursor() as cursor:
-            where_clause = "WHERE (Nombre LIKE %s)"
+            where_clause = "WHERE (P.Nombre LIKE %s)"
             params = [f'%{search_query}%']
-            if not mostrar_desactivados: where_clause += " AND Activo = 1"
-            sql_query = f"SELECT Id_Producto, Nombre, PrecioVenta, Cantidad, StockMinimo, Activo FROM Productos {where_clause} ORDER BY Nombre"
+            if not mostrar_desactivados: where_clause += " AND P.Activo = 1"
+            
+            # Consulta con JOIN para traer Proveedor y Costo
+            sql_query = f"""
+                SELECT 
+                    P.Id_Producto, P.Nombre, P.PrecioVenta, P.Cantidad, P.StockMinimo, P.Activo,
+                    Prov.nombre_proveedor AS ProveedorNombre,
+                    PP.PrecioCompra AS PrecioCosto
+                FROM Productos P
+                LEFT JOIN Proveedores Prov ON P.IdProveedor = Prov.id_Proveedor
+                LEFT JOIN ProveedorProducto PP ON P.Id_Producto = PP.Id_Producto AND P.IdProveedor = PP.Id_Proveedor
+                {where_clause} 
+                ORDER BY P.Nombre
+            """
             cursor.execute(sql_query, params)
             productos = dictfetchall(cursor)
     except Exception as e:
@@ -196,16 +196,25 @@ def productos_view(request):
     context = {'nombre_usuario': request.session.get('user_nombre'), 'rol_usuario': request.session.get('user_rol'), 'productos': productos, 'search_query': search_query, 'mostrando_desactivados': bool(mostrar_desactivados)}
     return render(request, 'tienda/productos.html', context)
 
+
+from django.core.files.storage import FileSystemStorage
+from django.db import connection, transaction
+# Asegúrate de tener los imports necesarios arriba
+
 def productos_agregar_view(request):
     if request.method == 'POST':
-        # 1. Recoger datos
+        # 1. Datos del Producto (Venta)
         nombre = request.POST.get('nombre')
-        precio = request.POST.get('precio')
-        cantidad = request.POST.get('cantidad')
-        id_prov = request.POST.get('proveedor')
-        stock = request.POST.get('stock_min')
+        precio_venta = request.POST.get('precio_venta')
+        stock_inicial = request.POST.get('cantidad')
+        stock_min = request.POST.get('stock_min')
+        
+        # 2. Datos del Proveedor (Compra)
+        id_prov = request.POST.get('id_proveedor')
+        unidades_por_paquete = request.POST.get('cantidad_compra') 
+        precio_costo = request.POST.get('precio_compra')
 
-        # 2. Manejar la Foto
+        # 3. Manejar la Foto
         ruta_foto = None
         if 'foto' in request.FILES:
             imagen = request.FILES['foto']
@@ -213,21 +222,65 @@ def productos_agregar_view(request):
             filename = fs.save(imagen.name, imagen)
             ruta_foto = fs.url(filename)
 
-        # 3. Guardar en Base de Datos
-        nuevo = Productos(
-            nombre=nombre,
-            precioventa=precio,
-            cantidad=cantidad,
-            idproveedor=id_prov,
-            stockminimo=stock,
-            rutafoto=ruta_foto,
-            activo=True
-        )
-        nuevo.save()
-        return redirect('/productos/') 
+        try:
+            with transaction.atomic():
+                # A. Generar ID Manualmente (Como lo tenías)
+                nuevo_id = 1
+                with connection.cursor() as cursor:
+                    cursor.execute("SELECT ISNULL(MAX(Id_Producto), 0) + 1 FROM Productos")
+                    row = cursor.fetchone()
+                    if row:
+                        nuevo_id = row[0]
 
-    return render(request, 'productos/productos_agregar.html')
-    
+                # B. Crear el Producto
+                nuevo_producto = Productos(
+                    id_producto=nuevo_id,
+                    nombre=nombre,
+                    precioventa=precio_venta,
+                    cantidad=stock_inicial,
+                    stockminimo=stock_min,
+                    
+                    # Usamos el nombre exacto del campo definido en el modelo
+                    idproveedor_id=id_prov, 
+                    
+                    rutafoto=ruta_foto,
+                    activo=True
+                )
+                # IMPORTANTE: Al ser managed=False y manual, le decimos que es una inserción nueva
+                nuevo_producto.save(force_insert=True)
+
+                # C. Guardar el Costo de Compra inicial (si aplica)
+                if id_prov and precio_costo:
+                    with connection.cursor() as cursor:
+                        sql_costo = """
+                            INSERT INTO ProveedorProducto (Id_Producto, Id_Proveedor, PrecioCompra, CantidadCompra, Activo)
+                            VALUES (%s, %s, %s, %s, 1)
+                        """
+                        cursor.execute(sql_costo, [nuevo_id, id_prov, precio_costo, unidades_por_paquete])
+
+            messages.success(request, f"¡Producto '{nombre}' creado con éxito! (ID Asignado: {nuevo_id})")
+            return redirect('productos_lista') # O la URL que uses para listar
+            
+        except Exception as e:
+            messages.error(request, f"Error al guardar el producto: {e}")
+
+    # --- PARTE GET (Cargar proveedores para el formulario) ---
+    proveedores = []
+    try:
+        # Usamos el ORM si es posible, o tu query raw si prefieres
+        # Opción Raw (como lo tenías):
+        with connection.cursor() as cursor:
+            cursor.execute("SELECT id_Proveedor, nombre_proveedor FROM Proveedores WHERE Activo = 1")
+            # Convertimos a lista de diccionarios manualmente para el template
+            columns = [col[0] for col in cursor.description]
+            proveedores = [
+                dict(zip(columns, row))
+                for row in cursor.fetchall()
+            ]
+    except Exception as e:
+        print(f"Error cargando proveedores: {e}")
+
+    return render(request, 'tienda/productos_agregar.html', {'proveedores': proveedores})
 
 @admin_requerido
 def productos_eliminar_view(request, id_prod):
@@ -251,70 +304,115 @@ def productos_reactivar_view(request, id_prod):
 
 @admin_requerido
 def productos_editar_view(request, id_prod):
-    # 1. Si le diste "Guardar Cambios" (POST)
+    # 1. Si se enviaron los cambios (POST)
     if request.method == 'POST':
-        prod_nombre = request.POST.get('Nombre')
-        prod_precio = request.POST.get('PrecioVenta')
-        prod_cantidad = request.POST.get('Cantidad')
-        prod_stock = request.POST.get('StockMinimo')
-        ruta_db_para_foto = request.POST.get('rutaFotoActual') 
-        
-        # Procesar foto si subieron una nueva
+        nombre = request.POST.get('Nombre')
+        precio_venta = request.POST.get('PrecioVenta')
+        cantidad = request.POST.get('Cantidad')
+        stock_min = request.POST.get('StockMinimo')
+        id_prov = request.POST.get('id_proveedor')
+        precio_costo = request.POST.get('precio_compra')
+        unidades_paquete = request.POST.get('cantidad_compra')
+        ruta_foto_actual = request.POST.get('rutaFotoActual')
+
+        # Procesar nueva foto con FileSystemStorage (Carpeta Media)
         if 'foto_del_producto' in request.FILES:
-            archivo_foto = request.FILES['foto_del_producto']
-            ruta_para_guardar = os.path.join(settings.BASE_DIR, 'Imagenes', archivo_foto.name)
-            try:
-                with open(ruta_para_guardar, 'wb+') as destination:
-                    for chunk in archivo_foto.chunks():
-                        destination.write(chunk)
-                ruta_db_para_foto = f"/static/{archivo_foto.name}"
-            except: pass
-            
-        sql_query = "UPDATE Productos SET Nombre=%s, PrecioVenta=%s, Cantidad=%s, StockMinimo=%s, rutaFoto=%s WHERE Id_Producto=%s"
-        params = [prod_nombre, prod_precio, prod_cantidad, prod_stock, ruta_db_para_foto, id_prod]
-        
+            archivo = request.FILES['foto_del_producto']
+            fs = FileSystemStorage()
+            filename = fs.save(archivo.name, archivo)
+            ruta_foto_actual = fs.url(filename)
+
         try:
-            with connection.cursor() as cursor:
-                cursor.execute(sql_query, params)
-            
-            # --- ¡AQUÍ ESTÁ EL MENSAJE! ---
-            messages.success(request, "Producto guardado correctamente.")
-            
-            return redirect('productos_lista') 
+            with transaction.atomic():
+                with connection.cursor() as cursor:
+                    # A. Actualizar tabla Productos
+                    sql_prod = """
+                        UPDATE Productos 
+                        SET Nombre=%s, PrecioVenta=%s, Cantidad=%s, StockMinimo=%s, rutaFoto=%s, IdProveedor=%s 
+                        WHERE Id_Producto=%s
+                    """
+                    cursor.execute(sql_prod, [nombre, precio_venta, cantidad, stock_min, ruta_foto_actual, id_prov, id_prod])
+
+                    # B. Actualizar o Insertar en ProveedorProducto (Costo y Empaque)
+                    if id_prov and precio_costo:
+                        cursor.execute("SELECT COUNT(*) FROM ProveedorProducto WHERE Id_Producto=%s AND Id_Proveedor=%s", [id_prod, id_prov])
+                        if cursor.fetchone()[0] > 0:
+                            cursor.execute("UPDATE ProveedorProducto SET PrecioCompra=%s, CantidadCompra=%s WHERE Id_Producto=%s AND Id_Proveedor=%s", 
+                                           [precio_costo, unidades_paquete, id_prod, id_prov])
+                        else:
+                            cursor.execute("INSERT INTO ProveedorProducto (Id_Producto, Id_Proveedor, PrecioCompra, CantidadCompra, Activo) VALUES (%s, %s, %s, %s, 1)", 
+                                           [id_prod, id_prov, precio_costo, unidades_paquete])
+
+            messages.success(request, "Producto y datos de proveedor actualizados correctamente.")
+            return redirect('productos_lista')
         except Exception as e:
             messages.error(request, f"Error al editar: {e}")
- 
-    # 2. Cargar datos para mostrar el formulario (GET)
+
+    # 2. Cargar datos para el formulario (GET)
     try:
         with connection.cursor() as cursor:
-            cursor.execute("SELECT * FROM Productos WHERE Id_Producto = %s", [id_prod])
-            data = dictfetchall(cursor)
-            if not data: return redirect('productos_lista')
-            producto = data[0] 
-    except Exception: return redirect('productos_lista')
-    
-    context = {
+            # Traer producto unido con su costo actual
+            sql = """
+                SELECT P.*, PP.PrecioCompra, PP.CantidadCompra 
+                FROM Productos P 
+                LEFT JOIN ProveedorProducto PP ON P.Id_Producto = PP.Id_Producto AND P.IdProveedor = PP.Id_Proveedor
+                WHERE P.Id_Producto = %s
+            """
+            cursor.execute(sql, [id_prod])
+            producto = dictfetchall(cursor)[0]
+            
+            # Traer proveedores para el select
+            cursor.execute("SELECT id_Proveedor, nombre_proveedor FROM Proveedores WHERE Activo = 1")
+            proveedores = dictfetchall(cursor)
+    except Exception:
+        return redirect('productos_lista')
+
+    return render(request, 'tienda/productos_editar.html', {
+        'producto': producto,
+        'proveedores': proveedores,
         'nombre_usuario': request.session.get('user_nombre'),
-        'rol_usuario': request.session.get('user_rol'),
-        'producto': producto
-    }
-    return render(request, 'tienda/productos_editar.html', context)
- 
-    # 2. Si solo estás entrando a ver el formulario (GET)
-    try:
-        with connection.cursor() as cursor:
-            cursor.execute("SELECT * FROM Productos WHERE Id_Producto = %s", [id_prod])
-            data = dictfetchall(cursor)
-            if not data: return redirect('productos_lista')
-            producto = data[0] 
-    except Exception: return redirect('productos_lista')
-    
+        'rol_usuario': request.session.get('user_rol')
+    })
+
+def productos_abastecer_view(request, id_prod):
+    producto_info = None
+    with connection.cursor() as cursor:
+        # CORRECCIÓN: Usamos Nombre y Cantidad que son los nombres reales
+        cursor.execute("""
+            SELECT Id_Producto, Nombre, Cantidad 
+            FROM Productos WHERE Id_Producto = %s
+        """, [id_prod])
+        row = cursor.fetchone()
+        if row:
+            producto_info = {
+                'id': row[0],
+                'nombre': row[1],
+                'stock': row[2]
+            }
+
+    if request.method == 'POST':
+        cantidad_ingresada = request.POST.get('cantidad_compra')
+        if cantidad_ingresada:
+            try:
+                nueva_cantidad = int(cantidad_ingresada)
+                with connection.cursor() as cursor:
+                    # CORRECCIÓN: Actualizamos usando la columna Cantidad
+                    cursor.execute("""
+                        UPDATE Productos 
+                        SET Cantidad = Cantidad + %s 
+                        WHERE Id_Producto = %s
+                    """, [nueva_cantidad, id_prod])
+                
+                messages.success(request, f" Stock actualizado para {producto_info['nombre']}")
+                return redirect('reportes') 
+            except Exception as e:
+                messages.error(request, f"Error al actualizar: {e}")
+
     context = {
+        'producto': producto_info,
         'nombre_usuario': request.session.get('user_nombre'),
-        'rol_usuario': request.session.get('user_rol'),
-        'producto': producto
     }
-    return render(request, 'tienda/productos_editar.html', context)
+    return render(request, 'tienda/productos_abastecer.html', context)
 
 # ==========================================
 #              CLIENTES
@@ -359,72 +457,75 @@ def clientes_view(request):
     }
     return render(request, 'tienda/clientes.html', context)
 
-@admin_requerido
+
+def clientes_lista_view(request):
+    # 1. Tu consulta SQL actual para traer los datos
+    with connection.cursor() as cursor:
+        cursor.execute("""
+            SELECT c.Id_Cliente, c.Nombre, c.Apellido, c.correo, t.numero_telefono_C, c.Activo
+            FROM Clientes c
+            LEFT JOIN ClienteTelefono t ON c.Id_Cliente = t.id_cliente
+        """)
+        columns = [col[0] for col in cursor.description]
+        rows = cursor.fetchall()
+
+    clientes_formateados = []
+    for row in rows:
+        datos = dict(zip(columns, row))
+        
+        # --- EL TRUCO DEL GUION ESTÁ AQUÍ ---
+        num = str(datos['numero_telefono_C'] or "").strip()
+        if len(num) == 8:
+            # Corta los primeros 4 dígitos, pone el guion y pega los otros 4
+            datos['telefono_con_guion'] = f"{num[:4]}-{num[4:]}"
+        else:
+            datos['telefono_con_guion'] = num if num else "N/A"
+            
+        clientes_formateados.append(datos)
+
+    return render(request, 'tienda/clientes_lista.html', {'clientes': clientes_formateados})
+
 def clientes_agregar_view(request):
     if request.method == 'POST':
-        cli_id = request.POST.get('Id_Cliente')
-        cli_nombre = request.POST.get('Nombre').strip()
-        cli_apellido = request.POST.get('Apellido').strip()
+        nom = request.POST.get('nombre')
+        ape = request.POST.get('apellido')
+        cor = request.POST.get('correo')
         
-        # --- VALIDACIÓN DE CORREO ---
-        cli_correo = request.POST.get('Correo')
-        if not cli_correo: 
-            cli_correo = None
-        else:
-            cli_correo = cli_correo.strip().lower() # Convertir a minúsculas
-            # Lista de dominios permitidos
-            dominios_validos = ['@gmail.com', '@hotmail.com', '@yahoo.com', '@outlook.com', '@live.com', '@icloud.com', '@yahoo.es', '@hotmail.es', '@outlook.es']
-            
-            es_valido = False
-            for dominio in dominios_validos:
-                if cli_correo.endswith(dominio):
-                    es_valido = True
-                    break
-            
-            if not es_valido:
-                messages.error(request, f"El correo '{cli_correo}' está mal escrito. Revisá la terminación (ej: @gmail.com).")
-                return redirect('clientes_lista')
-        # ----------------------------
-        
-        cli_tel_1 = request.POST.get('numero_telefono_C_1') 
-        cli_tel_2 = request.POST.get('numero_telefono_C_2') 
-        
+        # LIMPPIAMOS EL GUION (ej: 8380-5501 -> 83805501)
+        tel1 = request.POST.get('tel1', '').replace('-', '')
+        tel2 = request.POST.get('tel2', '').replace('-', '')
+
         try:
-            with transaction.atomic(): 
+            with transaction.atomic():
+                # 1. ID Automático
                 with connection.cursor() as cursor:
-                    # Validar ID
-                    cursor.execute("SELECT COUNT(*) FROM Clientes WHERE Id_Cliente = %s", [cli_id])
-                    if cursor.fetchone()[0] > 0:
-                        messages.error(request, "El ID de Cliente ya existe.")
-                        return redirect('clientes_lista')
+                    cursor.execute("SELECT ISNULL(MAX(Id_Cliente), 0) + 1 FROM Clientes")
+                    nuevo_id = cursor.fetchone()[0]
 
-                    # Validar Nombre Duplicado
-                    cursor.execute("SELECT COUNT(*) FROM Clientes WHERE LOWER(Nombre) = LOWER(%s) AND LOWER(Apellido) = LOWER(%s)", [cli_nombre, cli_apellido])
-                    if cursor.fetchone()[0] > 0:
-                        messages.error(request, f"El cliente '{cli_nombre} {cli_apellido}' ya existe.")
-                        return redirect('clientes_lista')
+                # 2. Guardar Cliente
+                with connection.cursor() as cursor:
+                    cursor.execute(
+                        "INSERT INTO Clientes (Id_Cliente, Nombre, Apellido, correo, Activo, EsOcasional) VALUES (%s, %s, %s, %s, 1, 0)",
+                        [nuevo_id, nom, ape, cor]
+                    )
 
-                    cursor.execute("INSERT INTO Clientes (Id_Cliente, Nombre, Apellido, Correo, Activo, EsOcasional) VALUES (%s, %s, %s, %s, 1, 0)", 
-                                   [cli_id, cli_nombre, cli_apellido, cli_correo])
-                    
-                    cursor.execute("SELECT ISNULL(MAX(id_telefonoCli), 0) FROM ClienteTelefono")
-                    next_id = cursor.fetchone()[0] + 1
-                    
-                    if cli_tel_1:
-                        cursor.execute("INSERT INTO ClienteTelefono VALUES (%s, %s, %s)", [next_id, cli_id, cli_tel_1])
-                        next_id += 1 
-                    if cli_tel_2:
-                        cursor.execute("INSERT INTO ClienteTelefono VALUES (%s, %s, %s)", [next_id, cli_id, cli_tel_2])
-                
-                messages.success(request, f"Cliente '{cli_nombre}' agregado correctamente.")
-                return redirect('clientes_lista')
+                # 3. Guardar Teléfonos en ClienteTelefono
+                with connection.cursor() as cursor:
+                    for num in [tel1, tel2]:
+                        if num:
+                            cursor.execute("SELECT ISNULL(MAX(id_telefonoCli), 0) + 1 FROM ClienteTelefono")
+                            nuevo_id_tel = cursor.fetchone()[0]
+                            cursor.execute(
+                                "INSERT INTO ClienteTelefono (id_telefonoCli, id_cliente, numero_telefono_C) VALUES (%s, %s, %s)",
+                                [nuevo_id_tel, nuevo_id, num]
+                            )
+
+            messages.success(request, f" Cliente guardado con éxito.")
+            return redirect('clientes_lista')
         except Exception as e:
-            print(f"Error cliente: {e}")
-            messages.error(request, "Error al guardar el cliente.")
+            messages.error(request, f"Error: {e}")
 
-    context = {'nombre_usuario': request.session.get('user_nombre'), 'rol_usuario': request.session.get('user_rol')}
-    return render(request, 'tienda/clientes_agregar.html', context)
-
+    return render(request, 'tienda/clientes_agregar.html')
 @admin_requerido
 def clientes_eliminar_view(request, id_cli):
     try:
@@ -547,6 +648,7 @@ def clientes_rapido_view(request):
             
     return JsonResponse({'error': 'Error'}, status=400)
 
+
 # ==========================================
 #              PROVEEDORES
 # ==========================================
@@ -586,14 +688,14 @@ def proveedores_view(request):
 @admin_requerido
 def proveedores_agregar_view(request):
     if request.method == 'POST':
-        prov_id = request.POST.get('id_Proveedor')
+        # 1. Capturamos datos y LIMPIAMOS el guion (8380-5501 -> 83805501)
         prov_nombre = request.POST.get('nombre_proveedor')
         prov_dir = request.POST.get('Direccion')
-        prov_tel_1 = request.POST.get('numero_telefono_P_1')
-        prov_tel_2 = request.POST.get('numero_telefono_P_2')
-        
-        # --- VALIDACIÓN DE CORREO ---
+        prov_tel_1 = request.POST.get('numero_telefono_P_1', '').replace('-', '')
+        prov_tel_2 = request.POST.get('numero_telefono_P_2', '').replace('-', '')
         prov_correo = request.POST.get('correo')
+
+        # --- VALIDACIÓN DE CORREO (Tu lógica original) ---
         if not prov_correo or prov_correo.strip() == "":
             prov_correo = None
         else:
@@ -604,30 +706,28 @@ def proveedores_agregar_view(request):
                 if prov_correo.endswith(dominio):
                     es_valido = True
                     break
-            
             if not es_valido:
-                messages.error(request, f"El correo '{prov_correo}' no es válido. Revisá la terminación.")
+                messages.error(request, f"El correo '{prov_correo}' no es válido.")
                 return redirect('proveedores_lista')
-        # ----------------------------
 
         try:
             with transaction.atomic():
                 with connection.cursor() as cursor:
-                    # Validar ID
-                    cursor.execute("SELECT COUNT(*) FROM Proveedores WHERE id_Proveedor = %s", [prov_id])
-                    if cursor.fetchone()[0] > 0:
-                        messages.error(request, "ID Proveedor repetido")
-                        return redirect('proveedores_lista')
-                    
-                    # Validar Nombre
+                    # 2. ID AUTOMÁTICO (MAX + 1)
+                    cursor.execute("SELECT ISNULL(MAX(id_Proveedor), 0) + 1 FROM Proveedores")
+                    prov_id = cursor.fetchone()[0]
+
+                    # 3. Validar Nombre Duplicado
                     cursor.execute("SELECT COUNT(*) FROM Proveedores WHERE LOWER(nombre_proveedor) = LOWER(%s)", [prov_nombre.strip()])
                     if cursor.fetchone()[0] > 0:
                         messages.error(request, f"El proveedor '{prov_nombre}' ya existe.")
                         return redirect('proveedores_lista')
 
+                    # 4. INSERT EN TABLA PROVEEDORES
                     sql_prov = "INSERT INTO Proveedores (id_Proveedor, nombre_proveedor, correo, Direccion, Activo) VALUES (%s, %s, %s, %s, 1)"
                     cursor.execute(sql_prov, [prov_id, prov_nombre, prov_correo, prov_dir])
                     
+                    # 5. INSERT EN TABLA TELÉFONOS (Con ID automático de teléfono)
                     cursor.execute("SELECT ISNULL(MAX(id_telefonoProve), 0) FROM ProveedorTelefono")
                     next_id_tel = cursor.fetchone()[0] + 1
                     
@@ -637,11 +737,10 @@ def proveedores_agregar_view(request):
                     if prov_tel_2:
                         cursor.execute("INSERT INTO ProveedorTelefono VALUES (%s, %s, %s)", [next_id_tel, prov_id, prov_tel_2])
             
-            messages.success(request, f"Proveedor '{prov_nombre}' agregado.")
+            messages.success(request, f"✅ Proveedor '{prov_nombre}' agregado con ID: {prov_id}")
             return redirect('proveedores_lista')
         except Exception as e:
-            print(f"Error: {e}")
-            messages.error(request, "Error al guardar.")
+            messages.error(request, f"Error al guardar: {e}")
 
     context = {'nombre_usuario': request.session.get('user_nombre'), 'rol_usuario': request.session.get('user_rol')}
     return render(request, 'tienda/proveedores_agregar.html', context)
@@ -727,18 +826,56 @@ def proveedores_editar_view(request, id_prov):
         'rol_usuario': request.session.get('user_rol'),
     }
     return render(request, 'tienda/proveedores_editar.html', context)
+
+def proveedores_lista_view(request):
+    # Traemos los proveedores y sus teléfonos desde tus tablas de SQL Server
+    sql = """
+        SELECT 
+            p.id_Proveedor, 
+            p.nombre_proveedor, 
+            p.correo, 
+            p.Direccion,
+            (SELECT TOP 1 numero_telefono FROM ProveedorTelefono WHERE id_Proveedor = p.id_Proveedor) as tel_db
+        FROM Proveedores p
+        WHERE p.Activo = 1
+    """
+    
+    with connection.cursor() as cursor:
+        cursor.execute(sql)
+        columns = [col[0] for col in cursor.description]
+        rows = cursor.fetchall()
+
+    proveedores_formateados = []
+    for row in rows:
+        datos = dict(zip(columns, row))
+        
+        # --- EL TRUCO DEL GUION ---
+        num = str(datos['tel_db'] or "").strip()
+        if len(num) == 8:
+            # Convierte 83805501 en 8380-5501
+            datos['telefono_con_guion'] = f"{num[:4]}-{num[4:]}"
+        else:
+            datos['telefono_con_guion'] = num or "N/A"
+            
+        proveedores_formateados.append(datos)
+
+    return render(request, 'tienda/proveedores_lista.html', {'proveedores': proveedores_formateados})
 # ==========================================
 #    ASIGNAR PROVEEDORES (COSTOS)
 # ==========================================
 
 @admin_requerido
+@admin_requerido
 def proveedor_producto_lista_view(request):
-    search_query = request.GET.get('q', '')
+    # --- CAPTURAMOS EL PARÁMETRO 'q' QUE VIENE DE REPORTES ---
+    search_query = request.GET.get('q', '') # <--- AGREGÁ ESTO
+    
     mostrar_desactivados = request.GET.get('mostrar_desactivados')
-    orden = request.GET.get('orden', 'nombre') # Por defecto ordena por nombre
+    orden = request.GET.get('orden', 'nombre')
     
     try:
         with connection.cursor() as cursor:
+            # Tu lógica de filtros ya usa search_query, así que con esto basta
             where_clause = "WHERE (Prov.nombre_proveedor LIKE %s OR Prod.Nombre LIKE %s)"
             params = [f'%{search_query}%', f'%{search_query}%']
             
@@ -788,11 +925,13 @@ def proveedor_producto_agregar_view(request):
     productos, proveedores = [], []
     try:
         with connection.cursor() as cursor:
+            # Traemos solo los que están activos
             cursor.execute("SELECT Id_Producto, Nombre FROM Productos WHERE Activo = 1 ORDER BY Nombre")
             productos = dictfetchall(cursor)
             cursor.execute("SELECT id_Proveedor, nombre_proveedor FROM Proveedores WHERE Activo = 1 ORDER BY nombre_proveedor")
             proveedores = dictfetchall(cursor)
-    except: pass
+    except Exception as e: 
+        print(f"Error cargando selects: {e}")
 
     if request.method == 'POST':
         id_prod = request.POST.get('id_producto')
@@ -802,6 +941,7 @@ def proveedor_producto_agregar_view(request):
 
         try:
             with connection.cursor() as cursor:
+                # Si ya existe la relación, la actualizamos; si no, la creamos
                 cursor.execute("SELECT COUNT(*) FROM ProveedorProducto WHERE Id_Producto = %s AND Id_Proveedor = %s", [id_prod, id_prov])
                 if cursor.fetchone()[0] > 0:
                     sql = "UPDATE ProveedorProducto SET PrecioCompra=%s, CantidadCompra=%s, Activo=1 WHERE Id_Producto=%s AND Id_Proveedor=%s"
@@ -810,10 +950,10 @@ def proveedor_producto_agregar_view(request):
                     sql = "INSERT INTO ProveedorProducto (Id_Producto, Id_Proveedor, PrecioCompra, CantidadCompra, Activo) VALUES (%s, %s, %s, %s, 1)"
                     cursor.execute(sql, [id_prod, id_prov, precio, cantidad])
             
-            messages.success(request, "Costo asignado correctamente.")
+            messages.success(request, "Costo y proveedor asignados correctamente.")
             return redirect('proveedor_producto_lista')
         except Exception as e:
-            print(f"Error al asignar: {e}")
+            messages.error(request, f"Error al asignar costo: {e}")
 
     context = {
         'productos': productos,
@@ -821,6 +961,7 @@ def proveedor_producto_agregar_view(request):
         'nombre_usuario': request.session.get('user_nombre'),
         'rol_usuario': request.session.get('user_rol'),
     }
+    # ASEGÚRATE DE QUE LA RUTA SEA ESTA:
     return render(request, 'tienda/proveedor_producto_agregar.html', context)
 
 @admin_requerido
@@ -924,312 +1065,318 @@ def registrar_compra_view(request):
 # ==========================================
 #              FACTURACIÓN
 # ==========================================
-@login_requerido
 def facturacion_view(request):
-    if 'carrito' not in request.session: request.session['carrito'] = []
-
-    search_query = request.GET.get('q_producto', '') 
-    search_cliente_query = request.GET.get('q_cliente', '')
-    cliente_seleccionado = request.GET.get('cliente_seleccionado', '')
-    monto_pagado_previo = request.GET.get('monto_pagado', '')
-
-    clientes_buscados = [] 
-    try:
-        with connection.cursor() as cursor:
-            # CASO A: Si estás buscando por nombre en la barrita
-            if search_cliente_query:
-                sql = "SELECT Id_Cliente, Nombre, Apellido FROM Clientes WHERE (Nombre LIKE %s OR Apellido LIKE %s OR CAST(Id_Cliente AS VARCHAR) LIKE %s) AND Activo = 1"
-                cursor.execute(sql, [f'%{search_cliente_query}%', f'%{search_cliente_query}%', f'%{search_cliente_query}%'])
-                clientes_buscados = dictfetchall(cursor)
-            
-            # CASO B (EL ARREGLO): Si no buscaste nada, pero ya tenías uno seleccionado (ej: después de un error)
-            elif cliente_seleccionado:
-                sql = "SELECT Id_Cliente, Nombre, Apellido FROM Clientes WHERE Id_Cliente = %s"
-                cursor.execute(sql, [cliente_seleccionado])
-                clientes_buscados = dictfetchall(cursor)
-
-    except Exception as e:
-        messages.error(request, f"Error al cargar clientes: {e}")
-
-    productos_en_pantalla = [] 
-    if search_query:
-        try:
-            with connection.cursor() as cursor:
-                sql = "SELECT Id_Producto, Nombre, PrecioVenta, Cantidad, rutaFoto FROM Productos WHERE Nombre LIKE %s AND Cantidad > 0 AND Activo = 1 ORDER BY Nombre ASC"
-                cursor.execute(sql, [f'%{search_query}%'])
-                productos_en_pantalla = dictfetchall(cursor)
-        except Exception as e:
-            messages.error(request, f"Error al buscar productos: {e}")
+    query = request.GET.get('q', '')
+    
+    # 1. Buscamos (Filtrar por nombre o ID)
+    if query:
+        productos_qs = Productos.objects.filter(
+            Q(nombre__icontains=query) | Q(id_producto__icontains=query)
+        ).filter(activo=True)
     else:
-        try:
-            with connection.cursor() as cursor:
-                sql = "SELECT Id_Producto, Nombre, PrecioVenta, Cantidad, rutaFoto FROM Productos WHERE Cantidad > 0 AND Activo = 1 ORDER BY Nombre ASC"
-                cursor.execute(sql)
-                productos_en_pantalla = dictfetchall(cursor)
-        except Exception as e:
-            messages.error(request, f"Error al cargar productos: {e}")
-            
-    carrito = request.session['carrito']
-    total_factura = sum(Decimal(item['subtotal']) for item in carrito)
+        productos_qs = Productos.objects.filter(activo=True)
+
+    # 2. Convertimos a Diccionario (CORRIGIENDO LA FOTO)
+    productos_list = []
+    for p in productos_qs:
+        
+        url_foto = ""
+        if p.rutafoto:
+            # --- CORRECCIÓN DE IMAGEN ---
+            # Si el nombre del archivo ya empieza con "/media/", lo usamos tal cual.
+            # Si no, dejamos que Django construya la URL completa.
+            nombre_archivo = str(p.rutafoto)
+            if nombre_archivo.startswith('/media/') or nombre_archivo.startswith('media/'):
+                url_foto = nombre_archivo # Ya tiene la ruta, no agregamos nada
+            elif nombre_archivo.startswith('/static/') or nombre_archivo.startswith('static/'):
+                url_foto = nombre_archivo # Es estática, la dejamos igual
+            else:
+                # Caso normal: Django le agrega la ruta de medios
+                try:
+                    url_foto = p.rutafoto.url
+                except:
+                    url_foto = "" # Por si acaso falla
+        
+        # Diccionario con MAYÚSCULAS (para que tu HTML no se rompa)
+        p_dict = {
+            'Id_Producto': p.id_producto,
+            'Nombre': p.nombre,
+            'PrecioVenta': p.precioventa,
+            'Cantidad': p.cantidad,
+            'rutaFoto': url_foto, 
+        }
+        productos_list.append(p_dict)
+
+    # 3. Datos del carrito y clientes
+    carrito = request.session.get('carrito', [])
+    total_carrito = sum(Decimal(str(item.get('subtotal', 0))) for item in carrito)
+    
+    # Clientes
+    clientes_list = list(Clientes.objects.filter(activo=True).values('id_cliente', 'nombre', 'apellido'))
 
     context = {
-        'nombre_usuario': request.session.get('user_nombre'), 'rol_usuario': request.session.get('user_rol'),
-        'clientes_buscados': clientes_buscados, 
-        'productos_en_pantalla': productos_en_pantalla,
-        'search_query': search_query, 
-        'search_cliente_query': search_cliente_query,
-        'cliente_seleccionado': cliente_seleccionado,
-        'monto_pagado_previo': monto_pagado_previo,
+        'productos': productos_list, # Pasamos nuestra lista corregida
+        'clientes': clientes_list,
         'carrito': carrito,
-        'total_factura': total_factura,
+        'total_carrito': total_carrito,
     }
+
     return render(request, 'tienda/facturacion.html', context)
 
-@login_requerido
 def facturacion_agregar_item(request):
     if request.method == 'POST':
-        try:
-            prod_id = request.POST.get('producto_id')
-            cantidad_a_agregar = int(request.POST.get('cantidad'))
-            
-            if cantidad_a_agregar <= 0: 
-                return JsonResponse({'error': "La cantidad debe ser mayor a 0."}, status=400)
-
-            # 1. Buscar datos reales del producto en la BD
-            with connection.cursor() as cursor:
-                cursor.execute("SELECT Nombre, PrecioVenta, Cantidad FROM Productos WHERE Id_Producto = %s AND Activo = 1", [prod_id])
-                data = dictfetchall(cursor)
-            
-            if not data: return JsonResponse({'error': "No existe"}, status=404)
-            prod_db = data[0]
-            stock_real = prod_db['Cantidad']
-            precio_unitario = Decimal(prod_db['PrecioVenta'])
-            
-            # 2. Obtener el carrito actual
-            if 'carrito' not in request.session: request.session['carrito'] = []
-            carrito = request.session['carrito']
-            
-            # --- LÓGICA PARA NO REPETIR ---
-            producto_encontrado = False
-            
-            for item in carrito:
-                # Si el ID coincide (lo convertimos a str para asegurar)
-                if str(item['id_producto']) == str(prod_id):
-                    
-                    # Calculamos la nueva cantidad total
-                    nueva_cantidad = int(item['cantidad']) + cantidad_a_agregar
-                    
-                    # Validamos Stock acumulado
-                    if nueva_cantidad > stock_real:
-                        return JsonResponse({'error': f"¡Stock insuficiente! Ya tenés {item['cantidad']} en carrito y solo hay {stock_real} en total."}, status=400)
-                    
-                    # Actualizamos el item existente
-                    item['cantidad'] = nueva_cantidad
-                    item['subtotal'] = f"{precio_unitario * nueva_cantidad:.2f}"
-                    producto_encontrado = True
-                    break # Ya lo encontramos, dejamos de buscar
-            
-            # Si NO estaba en el carrito, lo agregamos como nuevo
-            if not producto_encontrado:
-                if cantidad_a_agregar > stock_real:
-                    return JsonResponse({'error': f"Solo hay {stock_real} en stock."}, status=400)
+        id_producto = request.POST.get('id_producto')
+        
+        # Obtenemos el producto usando el ID que viene del HTML
+        producto = get_object_or_404(Productos, pk=id_producto)
+        
+        # Recuperamos el carrito actual
+        carrito = request.session.get('carrito', [])
+        
+        # Verificamos si ya existe en el carrito para solo sumar cantidad
+        encontrado = False
+        for item in carrito:
+            if item['id'] == producto.pk:
+                # Chequeamos si hay stock suficiente
+                if item['cantidad'] + 1 <= producto.cantidad:
+                    item['cantidad'] += 1
+                    # Recalculamos subtotal
+                    item['subtotal'] = float(item['precio']) * item['cantidad']
+                    encontrado = True
+                else:
+                    messages.warning(request, f"Solo hay {producto.cantidad} unidades de {producto.nombre}")
+                    encontrado = True # Para que no intente agregarlo como nuevo
+                break
+        
+        # Si no estaba en el carrito, lo creamos nuevo
+        if not encontrado:
+            if producto.cantidad > 0:
+                # Validamos la imagen para que no de error si no tiene
+                url_imagen = ""
+                if producto.rutafoto:
+                    url_imagen = producto.rutafoto.url
                 
                 nuevo_item = {
-                    'id_producto': prod_id, 
-                    'nombre': prod_db['Nombre'], 
-                    'cantidad': cantidad_a_agregar, 
-                    'precio_unitario': f"{precio_unitario:.2f}", 
-                    'subtotal': f"{precio_unitario * cantidad_a_agregar:.2f}"
+                    'id': producto.pk,
+                    'nombre': producto.nombre,  # Tu modelo usa 'nombre' (minúscula)
+                    'precio': float(producto.precioventa), # Tu modelo usa 'precioventa' (todo junto)
+                    'cantidad': 1,
+                    'subtotal': float(producto.precioventa),
+                    'imagen': url_imagen
                 }
                 carrito.append(nuevo_item)
-            
-            # 3. Guardar y Recalcular Total
-            request.session['carrito'] = carrito
-            request.session.modified = True 
-            
-            total_factura = sum(Decimal(i['subtotal']) for i in carrito)
-            
-            return JsonResponse({
-                'mensaje': f"Producto actualizado: {prod_db['Nombre']}", 
-                'carrito': carrito, 
-                'total_factura': f"{total_factura:.2f}"
-            })
+            else:
+                messages.error(request, "Producto agotado.")
 
-        except Exception as e: return JsonResponse({'error': str(e)}, status=500)
-    return JsonResponse({'error': 'Bad request'}, status=400)
+        # Guardamos los cambios en la sesión
+        request.session['carrito'] = carrito
+        request.session.modified = True
+        
+    return redirect('facturacion_view')
 
 # --- AUTOCOMPRA (SOY YO) ---
 @login_requerido
 def autocompra_view(request):
-    if request.method == 'POST':
-        nombre_usuario = request.session.get('user_nombre', 'Usuario')
-        apellido_fijo = "(Personal)" # Para diferenciarlo de un cliente normal
+    nombre_usuario = request.session.get('user_nombre', 'Usuario')
+    apellido_fijo = "(Personal)" # Para diferenciar tu perfil de cliente
 
-        try:
-            with transaction.atomic():
-                with connection.cursor() as cursor:
-                    # 1. Buscar si ya existe el "Cliente Usuario"
-                    cursor.execute("SELECT Id_Cliente, Nombre, Apellido FROM Clientes WHERE Nombre = %s AND Apellido = %s", [nombre_usuario, apellido_fijo])
-                    data = dictfetchall(cursor)
-
-                    if data:
-                        # Ya existe, lo devolvemos
-                        cliente = data[0]
-                        return JsonResponse({
-                            'mensaje': f"Cliente asignado: {cliente['Nombre']}",
-                            'cliente': {'id': cliente['Id_Cliente'], 'nombre_completo': f"{cliente['Nombre']} {cliente['Apellido']}"}
-                        })
-                    else:
-                        # 2. No existe, lo creamos
-                        # Generar ID nuevo (Busca el hueco o el máximo)
-                        cursor.execute("SELECT ISNULL(MAX(Id_Cliente), 0) + 1 FROM Clientes")
-                        new_id = cursor.fetchone()[0]
-                        
-                        # Validamos que ese ID no exista (por si las moscas)
-                        cursor.execute("SELECT COUNT(*) FROM Clientes WHERE Id_Cliente = %s", [new_id])
-                        while cursor.fetchone()[0] > 0:
-                            new_id += 1 # Buscamos el siguiente libre
-                        
-                        # Insertar como Cliente Frecuente (EsOcasional=0) para que salga en reportes
-                        sql = "INSERT INTO Clientes (Id_Cliente, Nombre, Apellido, Correo, Activo, EsOcasional) VALUES (%s, %s, %s, 'N/A', 1, 0)"
-                        cursor.execute(sql, [new_id, nombre_usuario, apellido_fijo])
-                        
-                        return JsonResponse({
-                            'mensaje': "Perfil de autocompra creado y asignado.",
-                            'cliente': {'id': new_id, 'nombre_completo': f"{nombre_usuario} {apellido_fijo}"}
-                        })
-
-        except Exception as e:
-            return JsonResponse({'error': str(e)}, status=500)
-            
-    return JsonResponse({'error': 'Método no permitido'}, status=400)
-
-@login_requerido
-def facturacion_eliminar_item(request, item_index):
     try:
-        carrito = request.session.get('carrito', [])
-        if 0 <= item_index < len(carrito):
-            del carrito[item_index]
-            request.session.modified = True
-            
-            total = sum(Decimal(i['subtotal']) for i in carrito)
-            
-            
-            return JsonResponse({
-                'mensaje': "Eliminado", 
-                'carrito': carrito, 
-                'total_factura': f"{total:.2f}" 
-            })
-    except: pass
-    return JsonResponse({'error': "Error"}, status=500)
+        with transaction.atomic():
+            with connection.cursor() as cursor:
+                # 1. Buscar si ya existe tu perfil de cliente
+                cursor.execute("SELECT Id_Cliente FROM Clientes WHERE Nombre = %s AND Apellido = %s", [nombre_usuario, apellido_fijo])
+                fila = cursor.fetchone()
 
-@login_requerido
+                if fila:
+                    id_cliente = fila[0]
+                else:
+                    # 2. Si no existe, crearlo (Buscamos el ID más alto disponible)
+                    cursor.execute("SELECT ISNULL(MAX(Id_Cliente), 0) + 1 FROM Clientes")
+                    id_cliente = cursor.fetchone()[0]
+                    
+                    sql_ins = "INSERT INTO Clientes (Id_Cliente, Nombre, Apellido, Correo, Activo, EsOcasional) VALUES (%s, %s, %s, 'N/A', 1, 0)"
+                    cursor.execute(sql_ins, [id_cliente, nombre_usuario, apellido_fijo])
+
+        messages.success(request, f"Modo Auto Compra activado para: {nombre_usuario}")
+        # Redirigimos a la facturación pasando tu ID por la URL para que se seleccione solo
+        return redirect(f'/facturacion/?cliente_seleccionado={id_cliente}')
+
+    except Exception as e:
+        messages.error(request, f"Error en auto compra: {e}")
+        return redirect('facturacion_view')
+
+def facturacion_eliminar_item(request, item_index):
+    carrito = request.session.get('carrito', [])
+    
+    if 0 <= item_index < len(carrito):
+        del carrito[item_index]
+        request.session['carrito'] = carrito
+        request.session.modified = True
+        messages.success(request, "Producto eliminado del carrito.")
+        
+    return redirect('facturacion_view')
+
+
+
 def facturacion_guardar_view(request):
     if request.method == 'POST':
-        id_cliente = request.POST.get('cliente_id')
-        monto_pagado_str = request.POST.get('monto_pagado') 
-        id_usuario = request.session.get('user_id')
         carrito = request.session.get('carrito', [])
-        
-        # Validaciones iniciales
-        if not id_cliente:
-            messages.error(request, "Tenés que seleccionar un cliente.")
-            return redirect('facturacion_view')
         
         if not carrito:
             messages.error(request, "El carrito está vacío.")
-            # Aquí devolvemos el cliente seleccionado por si acaso
-            return redirect(f'/facturacion/?cliente_seleccionado={id_cliente}')
-            
-        if not monto_pagado_str:
-            messages.error(request, "Falta el monto de pago.")
-            return redirect(f'/facturacion/?cliente_seleccionado={id_cliente}')
+            return redirect('facturacion_view')
 
         try:
-            total_factura = sum(Decimal(item['subtotal']) for item in carrito)
-            monto_pagado = Decimal(monto_pagado_str)
-            
-            # 1. VALIDACIÓN DE DINERO (Aquí es donde fallaba)
-            if monto_pagado < total_factura:
-                messages.error(request, f"Pago insuficiente. Faltan C$ {total_factura - monto_pagado}")
-                # ¡EL ARREGLO!: Redirigimos enviando el ID del cliente y el monto para que no se borren
-                return redirect(f'/facturacion/?cliente_seleccionado={id_cliente}&monto_pagado={monto_pagado_str}')
-
-            cambio = monto_pagado - total_factura
-
             with transaction.atomic():
-                with connection.cursor() as cursor:
-                    cursor.execute("SELECT ISNULL(MAX(id_factura), 0) + 1 FROM Factura")
-                    new_id = cursor.fetchone()[0]
+                # --- 1. LÓGICA DE CLIENTE AUTOMÁTICO ---
+                cliente_id = request.POST.get('cliente_id')
+                
+                if cliente_id:
+                    # Si el cajero eligió a alguien, usamos ese
+                    cliente_obj = get_object_or_404(Clientes, pk=cliente_id)
+                else:
+                    # Si lo dejó vacío, buscamos al "Cliente Particular"
+                    cliente_obj = Clientes.objects.filter(nombre__icontains="Particular").first()
                     
-                    # Insertar Factura
-                    cursor.execute("INSERT INTO Factura (id_factura, id_cliente, Id_Usuario, FechaHora, Total, MontoPagado, Cambio) VALUES (%s, %s, %s, GETDATE(), %s, %s, %s)", 
-                                   [new_id, id_cliente, id_usuario, total_factura, monto_pagado, cambio])
+                    # Plan B: Si no existe "Particular", busca "General"
+                    if not cliente_obj:
+                         cliente_obj = Clientes.objects.filter(nombre__icontains="General").first()
                     
-                    cursor.execute("SELECT ISNULL(MAX(Id_Detalle), 0) FROM DetalleFactura")
-                    next_det = cursor.fetchone()[0] + 1
-                    
-                    for item in carrito:
-                        cursor.execute("INSERT INTO DetalleFactura (Id_Detalle, Id_Factura, Id_Producto, cantidad, Subtotal) VALUES (%s, %s, %s, %s, %s)",
-                                       [next_det, new_id, item['id_producto'], item['cantidad'], Decimal(item['subtotal'])])
-                        next_det += 1
-                        cursor.execute("UPDATE Productos SET Cantidad = Cantidad - %s WHERE Id_Producto = %s", [item['cantidad'], item['id_producto']])
+                    if not cliente_obj:
+                        messages.error(request, "⚠ Error: No seleccionaste cliente y no existe el 'Cliente Particular' en la BD.")
+                        return redirect('facturacion_view')
 
-            request.session['carrito'] = [] 
-            messages.success(request, f"Factura #{new_id} guardada.")
-            return redirect('factura_recibo', id_fact=new_id)
-            
+                # --- 2. TOTALES (CON PROTECCIÓN ANTI-VACÍOS) ---
+                # Obtenemos lo que se escribió en Envío. Si está vacío, devuelve cadena vacía ''
+                envio_texto = request.POST.get('costo_envio', '').strip()
+                
+                # Si envio_texto tiene algo, lo convierte a Decimal. Si está vacío, usa '0'.
+                costo_envio = Decimal(envio_texto if envio_texto else '0')
+
+                # Sumamos el total de productos del carrito
+                total_productos = sum(Decimal(str(item.get('subtotal', 0))) for item in carrito)
+                total_final = total_productos + costo_envio
+
+                # --- 3. CALCULAR ID MANUAL (Para tu tabla histórica) ---
+                ultimo_id = Facturas.objects.aggregate(Max('Id_Factura'))['Id_Factura__max']
+                
+                # Si es la primera venta de la historia es la 1, si no, le sumamos 1
+                nuevo_id = 1 if ultimo_id is None else ultimo_id + 1
+
+                # --- 4. CREAR FACTURA ---
+                nueva_factura = Facturas.objects.create(
+                    Id_Factura=nuevo_id,
+                    Cliente=cliente_obj,
+                    Total=total_final,
+                    CostoEnvio=costo_envio,
+                    # Descomenta la siguiente línea si tu base de datos exige un usuario:
+                    # Id_Usuario = 1 
+                )
+
+                # --- 5. GUARDAR DETALLES Y RESTAR STOCK ---
+                for item in carrito:
+                    pid = item.get('id') or item.get('id_producto')
+                    producto_real = Productos.objects.get(pk=pid)
+                    
+                    cantidad = int(item.get('cantidad', 1))
+                    subtotal = Decimal(str(item.get('subtotal', 0)))
+
+                    DetalleFactura.objects.create(
+                        Factura=nueva_factura,
+                        Producto=producto_real,
+                        Cantidad=cantidad,
+                        Subtotal=subtotal
+                    )
+
+                    # Restar del inventario
+                    producto_real.cantidad -= cantidad
+                    producto_real.save()
+
+                # --- 6. FINALIZAR ---
+                request.session['carrito'] = [] 
+                request.session.modified = True
+                
+                # ¡Éxito! Nos vamos directo al ticket
+                return redirect('factura_recibo', id_factura=nueva_factura.Id_Factura)
+
         except Exception as e:
-            print(f"Error Factura: {e}")
-            messages.error(request, f"Error al guardar: {e}")
-            # Si falla SQL, también devolvemos al cliente para no perderlo
-            return redirect(f'/facturacion/?cliente_seleccionado={id_cliente}&monto_pagado={monto_pagado_str}')
+            print(f" ERROR AL COBRAR: {e}")
+            messages.error(request, f"Error al guardar la venta: {e}")
+            return redirect('facturacion_view')
+    
+    return redirect('facturacion_view')
+
+def facturacion_restar_item(request, item_index):
+    carrito = request.session.get('carrito', [])
+    
+    if 0 <= item_index < len(carrito):
+        item = carrito[item_index]
+        
+        if item['cantidad'] > 1:
+            item['cantidad'] -= 1
+            item['subtotal'] = float(item['precio']) * item['cantidad']
+            request.session.modified = True
+        else:
+            # Opcional: Si llega a 1 y le das restar, ¿quieres borrarlo? 
+            # Por ahora solo no hace nada si es 1.
+            pass
+            
+    return redirect('facturacion_view')
+
+def facturacion_sumar_item(request, item_index):
+    carrito = request.session.get('carrito', [])
+    
+    if 0 <= item_index < len(carrito):
+        item = carrito[item_index]
+        
+        # CORRECCIÓN: Usamos 'id' (que es como lo guardamos ahora)
+        prod_id = item.get('id') 
+        
+        # Consultamos a la base de datos para ver si hay stock real
+        producto = get_object_or_404(Productos, pk=prod_id)
+        
+        # Validamos Stock
+        if item['cantidad'] + 1 <= producto.cantidad:
+            item['cantidad'] += 1
+            item['subtotal'] = float(item['precio']) * item['cantidad']
+            request.session.modified = True
+        else:
+            messages.warning(request, f"✋ Solo quedan {producto.cantidad} unidades de {producto.nombre}")
             
     return redirect('facturacion_view')
 
 @login_requerido
 def factura_recibo_view(request, id_fact):
-    factura = None
-    detalles = []
+    # Esta vista SÓLO sirve para MOSTRAR la factura guardada
     try:
         with connection.cursor() as cursor:
-            # 1. Datos de la Factura (Con MontoPagado y Cambio)
-            sql_fact = """
-                SELECT 
-                    F.id_factura, F.FechaHora, F.Total, F.MontoPagado, F.Cambio,
-                    C.Nombre AS ClienteNombre, C.Apellido AS ClienteApellido,
-                    U.Nombre AS CajeroNombre
-                FROM Factura F
+            # Traemos la factura (Usamos F.* para traer todos los campos)
+            cursor.execute("""
+                SELECT F.id_factura, F.FechaHora, F.Total, F.MontoPagado, F.Cambio, F.CostoEnvio, 
+                       C.Nombre AS ClienteNombre, U.Nombre AS CajeroNombre 
+                FROM Factura F 
                 JOIN Clientes C ON F.id_cliente = C.Id_Cliente
                 JOIN Usuarios U ON F.Id_Usuario = U.IdUsuario
-                WHERE F.id_factura = %s
-            """
-            cursor.execute(sql_fact, [id_fact])
-            data = dictfetchall(cursor)
-            
-            if not data:
-                return redirect('facturacion_view')
-            factura = data[0]
+                WHERE F.id_factura = %s""", [id_fact])
+            factura = dictfetchall(cursor)[0]
 
-            # 2. Detalles (Calculando Precio Unitario al vuelo)
-            sql_det = """
-                SELECT 
-                    D.cantidad, D.Subtotal,
-                    P.Nombre as ProductoNombre,
-                    (D.Subtotal / NULLIF(D.cantidad, 0)) as PrecioUnitario
-                FROM DetalleFactura D
-                JOIN Productos P ON D.Id_Producto = P.Id_Producto
-                WHERE D.Id_Factura = %s
-            """
-            cursor.execute(sql_det, [id_fact])
+            cursor.execute("""
+                SELECT D.Cantidad, D.Subtotal, P.Nombre AS ProductoNombre 
+                FROM DetalleFactura D 
+                JOIN Productos P ON D.Id_Producto = P.Id_Producto 
+                WHERE D.id_factura = %s""", [id_fact])
             detalles = dictfetchall(cursor)
-            
-    except Exception as e:
-        print(f"💥 Error Recibo: {e}")
-        messages.error(request, "Error al generar el recibo.")
-        return redirect('facturacion_view')
 
-    return render(request, 'tienda/factura_recibo.html', {'factura': factura, 'detalles': detalles})
+            # Cálculo de subtotal de productos para que no salga vacío
+            sub_productos = Decimal(factura['Total']) - Decimal(factura['CostoEnvio'] or 0)
+
+        return render(request, 'tienda/factura_recibo.html', {
+            'factura': factura,
+            'detalles': detalles,
+            'subtotal_productos': sub_productos
+        })
+    except:
+        return redirect('facturacion_view')
 
 @login_requerido
 def prediccion_view(request):
@@ -1249,71 +1396,47 @@ def prediccion_view(request):
     return render(request, 'tienda/prediccion.html', context)
 
 #recuperacion de cuenta
-# --- VISTA 1: SOLICITAR RECUPERACIÓN ---
 def recuperar_password_view(request):
     if request.method == 'POST':
         correo = request.POST.get('correo')
         
         try:
             with connection.cursor() as cursor:
-                # 1. Buscamos si existe el correo en la BD
-                # Usamos IdUsuario (pegado) como corregimos antes
-                sql_buscar = "SELECT IdUsuario, Nombre FROM Usuarios WHERE Correo = %s"
-                cursor.execute(sql_buscar, [correo])
+                # 1. Buscar usuario
+                cursor.execute("SELECT IdUsuario, Nombre FROM Usuarios WHERE Correo = %s", [correo])
                 usuario = cursor.fetchone()
                 
                 if usuario:
-                    user_id = usuario[0]
-                    nombre = usuario[1]
+                    user_id, nombre = usuario[0], usuario[1]
+                    token = str(uuid.uuid4()) # Generamos el token único
                     
-                    # 2. Generamos un token único (código largo y aleatorio)
-                    token = str(uuid.uuid4())
+                    # 2. Guardar token en BD
+                    cursor.execute("UPDATE Usuarios SET token_recuperacion = %s WHERE IdUsuario = %s", [token, user_id])
                     
-                    # 3. Guardamos el token en la BD
-                    sql_update = "UPDATE Usuarios SET token_recuperacion = %s WHERE IdUsuario = %s"
-                    cursor.execute(sql_update, [token, user_id])
-                    
-                    # 4. Preparamos el Enlace y el Correo
-                    # Esto crea el link tipo: http://127.0.0.1:8000/cambiar-password/token...
+                    # 3. Preparar el link
                     link = request.build_absolute_uri(reverse('cambiar_password', args=[token]))
                     
+                    # 4. ENVIAR EL CORREO
                     asunto = 'Recuperación de Contraseña - Mi Tiendita'
-                    mensaje = f'''
-                    Hola {nombre},
+                    mensaje = f'Hola {nombre},\n\nPara cambiar tu clave, hacé clic aquí:\n{link}'
                     
-                    Recibimos una solicitud para restablecer tu contraseña en Mi Tiendita.
-                    
-                    Para crear una nueva clave, hacé clic en el siguiente enlace:
-                    {link}
-                    
-                    Si no solicitaste esto, por favor ignorá este mensaje.
-                    
-                    Saludos,
-                    El equipo de Mi Tiendita.
-                    '''
-                    
-                    # 5. ¡ENVIAR EL CORREO REAL! 🚀
                     send_mail(
                         asunto,
                         mensaje,
-                        settings.DEFAULT_FROM_EMAIL,  # Remitente (configurado en settings.py)
-                        [correo],                     # Destinatario
+                        settings.DEFAULT_FROM_EMAIL,
+                        [correo],
                         fail_silently=False,
                     )
                     
-                    messages.success(request, f"¡Listo! Se ha enviado un enlace a {correo}. Revisá tu bandeja de entrada.")
+                    messages.success(request, f"Se ha enviado un enlace a {correo}.")
                     return redirect('login')
-                
                 else:
-                    # Si no encuentra el correo
-                    messages.error(request, "Ese correo electrónico no está registrado en el sistema.")
-                    
+                    messages.error(request, "Ese correo electrónico no está registrado.")
         except Exception as e:
-            # Si falla la conexión o el envío de correo
-            print(f"Error detallado: {e}") # Imprime en consola para que veas qué pasó
-            messages.error(request, "Hubo un error al intentar enviar el correo. Verificá tu conexión.")
+            messages.error(request, "Error al enviar el correo. Verificá tu conexión.")
 
     return render(request, 'tienda/password_reset_form.html')
+
 
 # --- VISTA 2: CAMBIAR LA CONTRASEÑA ---
 def cambiar_password_view(request, token):
@@ -1358,3 +1481,42 @@ def cambiar_password_view(request, token):
                 messages.error(request, f"Error al guardar: {e}")
 
     return render(request, 'tienda/password_change_form.html', {'token': token})
+
+def facturacion_nueva_venta(request):
+    """Limpia el carrito de la sesión."""
+    if 'carrito' in request.session:
+        request.session['carrito'] = []
+        request.session.modified = True
+    return redirect('facturacion_view')
+
+def factura_recibo(request, id_factura):
+    factura = get_object_or_404(Facturas, pk=id_factura)
+    detalles = DetalleFactura.objects.filter(Factura=factura)
+    return render(request, 'tienda/factura_recibo.html', {'factura': factura, 'detalles': detalles})
+
+def buscar_producto_ajx(request):
+    termino = request.GET.get('term', '')  # Lo que el usuario escribe
+    productos = []
+    
+    if termino:
+        with connection.cursor() as cursor:
+            # Buscamos por nombre o por ID del producto
+            query = """
+                SELECT id_Producto, nombre_producto, precio_venta 
+                FROM Productos 
+                WHERE nombre_producto LIKE %s OR CAST(id_Producto AS VARCHAR) LIKE %s
+                AND Activo = 1
+            """
+            cursor.execute(query, [f'%{termino}%', f'%{termino}%'])
+            rows = cursor.fetchall()
+            
+            for row in rows:
+                productos.append({
+                    'id': row[0],
+                    'label': f"{row[1]} (ID: {row[0]})",  # Lo que sale en la lista
+                    'value': row[1],                    # Lo que queda en el input
+                    'precio': str(row[2])               # Para autollenar el precio
+                })
+                
+    return JsonResponse(productos, safe=False)
+

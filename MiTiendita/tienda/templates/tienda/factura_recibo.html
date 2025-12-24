@@ -1,293 +1,148 @@
-{% extends 'tienda/base.html' %}
-{% block title %}Recibo de Venta{% endblock %}
-
-{% block content %}
-<style>
-    /* --- ESTILOS DE PANTALLA (Screen) --- */
-    .btn-print { width: 200px; margin-bottom: 10px; }
-
-    /* Ocultar el ticket en pantalla normal, mostrar solo A4 */
-    .ticket-area { display: none; }
-    .a4-area { display: block; }
-    
-    /* Estilos del A4 en pantalla */
-    .a4-area {
-        padding: 40px;
-        margin-bottom: 20px;
-        border-radius: 10px;
-        box-shadow: 0 0 15px rgba(0,0,0,0.1);
-        transition: all 0.3s;
-    }
-
-    /* --- MODO CLARO (Por defecto) --- */
-    [data-bs-theme="light"] .a4-area { background-color: white; }
-    [data-bs-theme="light"] .info-box { background-color: #f8f9fa; border: 1px solid #dee2e6; }
-    [data-bs-theme="light"] .info-header { background-color: #e9ecef; color: #495057; }
-
-    /* --- MODO OSCURO (VISUALIZACIÓN) --- */
-    [data-bs-theme="dark"] .a4-area {
-        background-color: #1e1e1e;
-        color: #e0e0e0;
-        border: 1px solid #444;
-    }
-    [data-bs-theme="dark"] .a4-area .text-primary { color: #6ea8fe !important; }
-    [data-bs-theme="dark"] .a4-area .text-muted { color: #adb5bd !important; }
-    [data-bs-theme="dark"] .info-box { 
-        background-color: #2c2c2c;
-        border: 1px solid #444; 
-        color: white;
-    }
-    [data-bs-theme="dark"] .info-header { 
-        background-color: #333; 
-        border-bottom: 1px solid #444;
-        color: #fff;
-    }
-    [data-bs-theme="dark"] .table { color: #e0e0e0; border-color: #444; }
-
-    /* ========================================================= */
-    /* CONFIGURACIÓN DE IMPRESIÓN (ARREGLO DE MEZCLA)          */
-    /* ========================================================= */
-    @media print {
-        /* 1. Ocultar todo por defecto */
-        body * { visibility: hidden; }
-        .no-print { display: none !important; }
-        
-        /* 2. Reset de colores para impresión (Blanco y Negro) */
-        :root, [data-bs-theme="dark"] { --bs-body-bg: white; --bs-body-color: black; }
-        body { background-color: white !important; color: black !important; -webkit-print-color-adjust: exact; }
-        @page { margin: 0; padding: 0; }
-
-        /* --- SI ES MODO TICKET --- */
-        body.print-mode-ticket .ticket-area {
-            display: block !important;
-            visibility: visible !important;
-            position: absolute;
-            top: 0; left: 0;
-            width: 100%;
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ticket #{{ factura.Id_Factura }}</title>
+    <style>
+        body {
+            background-color: #f0f0f0; /* Fondo gris para que resalte el ticket */
+            font-family: 'Courier New', Courier, monospace; /* Letra estilo Ticket */
+            display: flex;
+            justify-content: center;
+            padding-top: 30px;
         }
-        body.print-mode-ticket .ticket-area * { visibility: visible !important; color: black !important; }
-        
-        /* ¡ESTO EVITA LA MEZCLA! Ocultar A4 si imprimo Ticket */
-        body.print-mode-ticket .a4-area { display: none !important; }
 
-
-        /* --- SI ES MODO A4 --- */
-        body.print-mode-a4 .a4-area {
-            display: block !important;
-            visibility: visible !important;
-            position: absolute;
-            top: 0; left: 0;
-            width: 100%;
+        .ticket-container {
+            background-color: white;
+            width: 320px; /* Ancho ideal para ticket */
             padding: 20px;
-            background-color: white !important;
-            box-shadow: none !important;
-            border: none !important;
+            box-shadow: 0 0 10px rgba(0,0,0,0.2); /* Sombrita para que se vea bonito */
+            margin-bottom: 50px;
         }
-        body.print-mode-a4 .a4-area * { visibility: visible !important; color: black !important; }
+
+        .text-center { text-align: center; }
+        .text-end { text-align: right; }
+        .fw-bold { font-weight: bold; }
         
-        /* ¡ESTO EVITA LA MEZCLA! Ocultar Ticket si imprimo A4 */
-        body.print-mode-a4 .ticket-area { display: none !important; }
+        /* Líneas punteadas separadoras */
+        .dashed-line { 
+            border-top: 1px dashed #000; 
+            margin: 10px 0; 
+        }
 
-        /* Ajustes forzados para A4 impreso */
-        .info-box { border: 1px solid #000 !important; background-color: transparent !important; }
-        .info-header { background-color: #f0f0f0 !important; border-bottom: 1px solid #000 !important; }
-        .table, th, td { border-color: #000 !important; color: black !important; }
-        .text-primary, .text-success, .text-danger, .text-muted { color: black !important; }
-    }
+        table { width: 100%; font-size: 13px; margin-top: 10px; }
+        th { text-align: left; font-size: 12px; }
+        td { vertical-align: top; padding: 4px 0; }
 
-    /* Estilos Ticket */
-    .ticket-area {
-        display: none;
-        width: 58mm;
-        font-family: 'Courier New', monospace;
-        font-size: 12px;
-        padding: 10px;
-        margin: 0 auto;
-        background: white;
-        color: black;
-    }
-    .ticket-header, .ticket-footer { text-align: center; margin-bottom: 10px; }
-    .ticket-divider { border-top: 1px dashed black; margin: 5px 0; }
-    .ticket-table { width: 100%; font-size: 11px; text-align: left; }
-    .ticket-table td { padding: 2px 0; }
-    .ticket-total { font-size: 14px; font-weight: bold; text-align: right; margin-top: 5px; }
+        .btn-group {
+            margin-top: 20px;
+            text-align: center;
+        }
 
-</style>
+        /* Estilos de botones */
+        .btn {
+            display: inline-block;
+            padding: 10px 20px;
+            margin: 5px;
+            text-decoration: none;
+            border-radius: 5px;
+            font-family: sans-serif; /* Botones con letra normal para leerse mejor */
+            font-size: 14px;
+            cursor: pointer;
+            border: none;
+        }
 
-<div class="container mt-4">
-    
-    <div class="d-flex justify-content-center gap-3 mb-4 no-print">
-        <a href="{% url 'facturacion_view' %}" class="btn btn-secondary btn-print shadow-sm">
-            <i class="fas fa-arrow-left me-2"></i> Volver a Vender
-        </a>
-        <button onclick="imprimirTicket()" class="btn btn-warning btn-print fw-bold shadow-sm">
-            <i class="fas fa-receipt me-2"></i> Imprimir TICKET
-        </button>
-        <button onclick="imprimirA4()" class="btn btn-primary btn-print fw-bold shadow-sm">
-            <i class="fas fa-file-pdf me-2"></i> Imprimir A4
-        </button>
-    </div>
+        .btn-print { background-color: #333; color: white; }
+        .btn-back { color: #007bff; background: none; }
+        .btn-back:hover { text-decoration: underline; }
 
-    <div class="a4-area">
-        <div class="row mb-4 border-bottom pb-3" style="border-color: #dee2e6;">
-            <div class="col-8">
-                <h2 class="text-primary fw-bold display-6"><i class="fas fa-store"></i> Mi Tiendita</h2>
-                <p class="text-muted mb-0 fs-5">Villa Jerusalén, del edificio alma 8c al sur 10 vrs arriba casa E38-196
-, Managua</p>
-                <p class="text-muted">Tel: 8966-2852 | RUC: 888-060399-1001B</p>
-            </div>
-            <div class="col-4 text-end">
-                <div class="p-3 info-box rounded text-center">
-                    <h4 class="fw-bold mb-0">FACTURA N°</h4>
-                    <h2 class="text-danger fw-bold">{{ factura.id_factura }}</h2>
-                    <small class="d-block text-muted">{{ factura.FechaHora|date:"d/m/Y h:i A" }}</small>
-                </div>
-            </div>
+        /* LO MÁS IMPORTANTE: Al imprimir, ocultar fondo y botones */
+        @media print {
+            body { background-color: white; padding: 0; display: block; }
+            .ticket-container { 
+                box-shadow: none; 
+                margin: 0; 
+                width: 100%; 
+                padding: 0; 
+            }
+            .no-print { display: none; }
+        }
+    </style>
+</head>
+<body>
+
+    <div class="ticket-container">
+        
+        <div class="text-center">
+            <h3 style="margin: 0;">MI TIENDITA</h3>
+            <p style="font-size: 12px; margin: 5px 0;">
+                RUC: 888-060399-1001B<br>
+                Managua, Nicaragua<br>
+                Tel:  8966-2852
+            </p>
         </div>
 
-        <div class="card mb-4 shadow-sm info-box">
-            <div class="card-header fw-bold info-header">
-                <i class="fas fa-user-circle me-2"></i> INFORMACIÓN DEL CLIENTE
-            </div>
-            <div class="card-body">
-                <div class="row">
-                    <div class="col-md-8">
-                        <small class="text-muted text-uppercase" style="font-size: 0.7rem;">Cliente</small>
-                        <p class="fs-5 fw-bold mb-0">{{ factura.ClienteNombre }} {{ factura.ClienteApellido }}</p>
-                    </div>
-                    <div class="col-md-4">
-                        <small class="text-muted text-uppercase" style="font-size: 0.7rem;">Atendido Por</small>
-                        <p class="fw-bold mb-0"><i class="fas fa-user-tag me-1"></i> {{ factura.CajeroNombre }}</p>
-                    </div>
-                </div>
-                {% if factura.ClienteCorreo and factura.ClienteCorreo != 'N/A' %}
-                <div class="row mt-2">
-                    <div class="col-12">
-                        <small class="text-muted text-uppercase" style="font-size: 0.7rem;">Correo</small>
-                        <p class="mb-0">{{ factura.ClienteCorreo }}</p>
-                    </div>
-                </div>
-                {% endif %}
-            </div>
+        <div class="dashed-line"></div>
+
+        <div style="font-size: 12px;">
+            <strong>Factura N°:</strong> {{ factura.Id_Factura }}<br>
+            <strong>Fecha:</strong> {{ factura.Fecha|date:"d/m/Y H:i" }}<br>
+            <strong>Cliente:</strong> {{ factura.Cliente.nombre }} {{ factura.Cliente.apellido|default:"" }}
         </div>
 
-        <div class="table-responsive">
-            <table class="table table-striped table-bordered border-secondary">
-                <thead class="table-dark">
-                    <tr>
-                        <th style="width: 50%;">DESCRIPCIÓN</th>
-                        <th class="text-center" style="width: 15%;">CANT.</th>
-                        <th class="text-end" style="width: 15%;">PRECIO U.</th>
-                        <th class="text-end" style="width: 20%;">SUBTOTAL</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {% for item in detalles %}
-                    <tr>
-                        <td>{{ item.ProductoNombre }}</td>
-                        <td class="text-center fw-bold">{{ item.cantidad }}</td>
-                        <td class="text-end">C$ {{ item.PrecioUnitario|floatformat:2 }}</td>
-                        <td class="text-end fw-bold">C$ {{ item.Subtotal|floatformat:2 }}</td>
-                    </tr>
-                    {% endfor %}
-                </tbody>
-            </table>
-        </div>
+        <div class="dashed-line"></div>
 
-        <div class="row justify-content-end mt-3">
-            <div class="col-md-5">
-                <table class="table table-sm table-borderless">
-                    <tr class="border-bottom border-secondary">
-                        <td class="text-end fs-5">Total a Pagar:</td>
-                        <td class="text-end fs-4 fw-bold text-primary">C$ {{ factura.Total|floatformat:2 }}</td>
-                    </tr>
-                    <tr>
-                        <td class="text-end text-muted">Efectivo:</td>
-                        <td class="text-end">C$ {{ factura.MontoPagado|floatformat:2 }}</td>
-                    </tr>
-                    <tr>
-                        <td class="text-end text-muted">Cambio:</td>
-                        <td class="text-end fw-bold">C$ {{ factura.Cambio|floatformat:2 }}</td>
-                    </tr>
-                </table>
-            </div>
-        </div>
-
-        <div class="mt-5 text-center text-muted" style="font-size: 0.8rem;">
-            <p class="fw-bold mb-1">¡Gracias por su compra!</p>
-            <p>Por favor revise su mercadería.</p>
-        </div>
-    </div>
-
-    <div class="ticket-area">
-        <div class="ticket-header">
-            <h3 style="margin: 0; font-weight: bold;">MI TIENDITA</h3>
-            <span>Managua, Nicaragua</span><br>
-            <span>Tel: 8966-2852</span>
-            <div class="ticket-divider"></div>
-            <span style="font-weight: bold; font-size: 14px;">FAC: #{{ factura.id_factura }}</span><br>
-            <span>{{ factura.FechaHora|date:"d/m/Y h:i A" }}</span><br>
-            <span>Cajero: {{ factura.CajeroNombre }}</span>
-        </div>
-
-        <div style="margin-bottom: 5px; border-bottom: 1px solid black; padding-bottom: 5px;">
-            <strong>Cliente:</strong><br>
-            {{ factura.ClienteNombre }} {{ factura.ClienteApellido }}
-        </div>
-
-        <table class="ticket-table">
+        <table>
             <thead>
                 <tr>
-                    <th style="text-align: left;">DESC</th>
-                    <th style="text-align: center;">CANT</th>
-                    <th style="text-align: right;">TOTAL</th>
+                    <th style="width: 50%;">Desc</th>
+                    <th class="text-center">Cant</th>
+                    <th class="text-end">Total</th>
                 </tr>
             </thead>
             <tbody>
                 {% for item in detalles %}
                 <tr>
-                    <td>{{ item.ProductoNombre|truncatechars:18 }}</td>
-                    <td style="text-align: center;">{{ item.cantidad }}</td>
-                    <td style="text-align: right;">{{ item.Subtotal|floatformat:2 }}</td>
+                    <td>{{ item.Producto.nombre }}</td>
+                    <td class="text-center">{{ item.Cantidad }}</td>
+                    <td class="text-end">{{ item.Subtotal }}</td>
                 </tr>
                 {% endfor %}
             </tbody>
         </table>
 
-        <div class="ticket-divider"></div>
+        <div class="dashed-line"></div>
 
-        <div class="ticket-total" style="font-size: 16px;">
-            TOTAL: C$ {{ factura.Total|floatformat:2 }}
+        <div class="text-end fw-bold" style="font-size: 16px;">
+            TOTAL: C$ {{ factura.Total }}
         </div>
-        <div style="text-align: right; font-size: 12px;">
-            Efectivo: {{ factura.MontoPagado|floatformat:2 }}<br>
-            Cambio: {{ factura.Cambio|floatformat:2 }}
+        
+        {% if factura.CostoEnvio %}
+        <div class="text-end" style="font-size: 12px;">
+            (Incluye Envío: C$ {{ factura.CostoEnvio }})
+        </div>
+        {% endif %}
+
+        <div class="dashed-line"></div>
+
+        <div class="text-center" style="font-size: 12px; margin-top: 15px;">
+            ¡Gracias por su compra!<br>
+            Vuelva pronto
         </div>
 
-        <div class="ticket-footer">
-            <div class="ticket-divider"></div>
-            <p style="font-weight: bold;">¡GRACIAS POR SU COMPRA!</p>
-            <small>Por favor revise su mercadería.</small>
+        <div class="btn-group no-print">
+            <button onclick="window.print()" class="btn btn-print">🖨️ Imprimir</button>
+            <br>
+            <a href="{% url 'facturacion_view' %}" class="btn btn-back">⬅ Volver a Vender</a>
         </div>
+
     </div>
 
-</div>
-{% endblock %}
+    <script>
+        // Opcional: Descomenta esto si quieres que imprima solo al abrir
+        // window.onload = function() { window.print(); }
+    </script>
 
-{% block content_scripts %}
-<script>
-    function imprimirTicket() {
-        // Activamos modo Ticket
-        document.body.classList.add('print-mode-ticket');
-        window.print();
-        document.body.classList.remove('print-mode-ticket');
-    }
-
-    function imprimirA4() {
-        // Activamos modo A4
-        document.body.classList.add('print-mode-a4');
-        window.print();
-        document.body.classList.remove('print-mode-a4');
-    }
-</script>
-{% endblock %}
+</body>
+</html>
