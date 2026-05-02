@@ -1164,28 +1164,6 @@ def prediccion_view(request):
         except: messages.error(request, "Error en datos.")
     return render(request, 'tienda/prediccion.html', context)
 
-def recuperar_password_view(request):
-    if request.method == 'POST':
-        correo = request.POST.get('correo')
-        try:
-            # Consulta SQL directa a la tabla de usuarios de Django
-            with connection.cursor() as cursor:
-                cursor.execute("SELECT id, username FROM auth_user WHERE email = %s", [correo])
-                row = cursor.fetchone()
-                if row:
-                    messages.success(request, "Correo enviado (Simulado).")
-                    return redirect('login')
-                else:
-                    messages.error(request, "Correo no encontrado.")
-        except: messages.error(request, "Error.")
-    return render(request, 'tienda/password_reset_form.html')
-
-def cambiar_password_view(request, token):
-    if request.method == 'POST':
-        messages.success(request, "Contraseña cambiada.")
-        return redirect('login')
-    return render(request, 'tienda/password_change_form.html', {'token': token})
-
 @login_requerido
 def lista_deudores_view(request):
     # Buscamos solo las facturas activas que tengan deuda
@@ -1277,3 +1255,5 @@ def reporte_pdf_view(request):
     if pisa_status.err:
         return HttpResponse('Tuvimos errores <pre>' + html + '</pre>')
     return response
+
+#cambiar contraseña con codigo

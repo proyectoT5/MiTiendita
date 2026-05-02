@@ -65,8 +65,7 @@ urlpatterns = [
 
     # --- OTROS ---
     path('prediccion/', views.prediccion_view, name='prediccion_view'),
-    path('recuperar-password/', views.recuperar_password_view, name='recuperar_password'),
-    path('cambiar-password/<str:token>/', views.cambiar_password_view, name='cambiar_password'),
+
     path('caja/', views.control_caja_view, name='control_caja'),
     path('historial/', views.historial_facturas_view, name='historial_facturas'),
     path('historial/anular/<int:id_fact>/', views.anular_factura_view, name='anular_factura'),
@@ -74,6 +73,9 @@ urlpatterns = [
     path('deudores/', views.lista_deudores_view, name='lista_deudores'),
     path('deudores/pagar/<int:id_fact>/', views.pagar_deuda_view, name='pagar_deuda'),
     path('reportes/pdf/', views.reporte_pdf_view, name='reporte_pdf'),
+
+    #recuperacion de password
+
 ]
 
 # --- MAGIA PARA FOTOS ---

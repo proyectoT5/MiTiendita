@@ -1,5 +1,5 @@
 from django.db import models
-
+from django.contrib.auth.models import User
 # ==========================================
 #  MODELOS "LEGACY" (Corregidos a minúsculas)
 # ==========================================
@@ -85,16 +85,7 @@ class ProveedorProducto(models.Model):
 #  NUEVOS MODELOS (Sistema Financiero)
 # ==========================================
 
-class Usuarios(models.Model):
-    id_usuario = models.AutoField(primary_key=True) # Cambiado a minúscula para evitar lios
-    Nombre = models.CharField(max_length=100)
-    Correo = models.CharField(max_length=100, unique=True)
-    Contraseña = models.CharField(max_length=100)
-    Rol = models.CharField(max_length=50)
-    token_recuperacion = models.CharField(max_length=100, null=True, blank=True)
 
-    def __str__(self):
-        return f"{self.Nombre} ({self.Rol})"
 
 class Egresos(models.Model):
     fecha = models.DateTimeField(auto_now_add=True)
@@ -133,3 +124,10 @@ class DetalleFactura(models.Model):
     id_producto = models.ForeignKey(Productos, on_delete=models.CASCADE)
     Cantidad = models.IntegerField()
     Subtotal = models.DecimalField(max_digits=10, decimal_places=2)
+
+class UserOTP(models.Model):
+    user = models.OneToOneField(User, on_delete=models.CASCADE)
+    secret = models.CharField(max_length=32)
+
+    def __str__(self):
+        return f"OTP - {self.user.username}"
