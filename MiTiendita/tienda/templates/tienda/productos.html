@@ -76,4 +76,55 @@
             </div>
         </div>
     </div>
+
+    <div class="modal fade" id="confirmDeleteModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <form method="POST" id="deleteForm">
+                    {% csrf_token %}
+                    <div class="modal-header bg-danger text-white">
+                        <h5 class="modal-title"><i class="fas fa-exclamation-triangle"></i> Desactivar Producto</h5>
+                        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                    </div>
+                    <div class="modal-body">
+                        <p>¿Estás seguro de que deseas desactivar el producto <strong id="modalProdName" class="text-danger"></strong>?</p>
+                        <p class="text-muted small">El producto no se eliminará de la base de datos por temas de historial, pero dejará de estar disponible para la venta.</p>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                        <button type="submit" class="btn btn-danger">Sí, Desactivar</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+    {% endblock %}
+
+{% block content_scripts %}
+<script>
+    // Este script le avisa a la ventanita qué producto elegiste borrar
+    document.addEventListener('DOMContentLoaded', function () {
+        var deleteModal = document.getElementById('confirmDeleteModal');
+        if (deleteModal) {
+            deleteModal.addEventListener('show.bs.modal', function (event) {
+                // El botón que activó el modal
+                var button = event.relatedTarget;
+                
+                // Extraemos la información de los atributos data-*
+                var prodId = button.getAttribute('data-id');
+                var prodName = button.getAttribute('data-name');
+                
+                // Actualizamos el nombre en el texto del modal
+                var modalTitle = deleteModal.querySelector('#modalProdName');
+                modalTitle.textContent = prodName;
+                
+                // Le ponemos la ruta correcta al formulario para que Django lo borre
+                var form = deleteModal.querySelector('#deleteForm');
+                // Hacemos un pequeño truco para armar la URL en JavaScript
+                var actionUrl = "{% url 'productos_eliminar' 0 %}".replace('0', prodId);
+                form.action = actionUrl;
+            });
+        }
+    });
+</script>
 {% endblock %}

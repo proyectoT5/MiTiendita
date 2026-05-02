@@ -1,0 +1,191 @@
+{% load static %}
+<style>
+    .billete-card {
+        transition: transform 0.2s;
+        border: 2px solid transparent;
+        border-radius: 12px;
+        overflow: hidden;
+    }
+    .billete-card:focus-within {
+        transform: scale(1.05);
+        border-color: #0d6efd; 
+        box-shadow: 0 8px 15px rgba(0,0,0,0.2);
+    }
+    .img-billete {
+        width: 100%;
+        height: 90px;
+        object-fit: contain;
+        background-color: rgba(0,0,0,0.05); 
+        padding: 5px;
+    }
+    [data-bs-theme="dark"] .img-billete {
+        background-color: rgba(255,255,255,0.05);
+    }
+</style>
+
+<div class="row g-3 px-2">
+    <div class="col-12 mt-0">
+        <h5 class="fw-bold text-primary border-bottom border-primary pb-2"><i class="fas fa-money-bill-wave"></i> Córdobas (C$)</h5>
+    </div>
+
+    <div class="col-6 col-sm-4 col-md-3">
+        <div class="card billete-card shadow-sm card-custom">
+            <img src="{% static 'billetes/1000c.jpg' %}" class="card-img-top img-billete" alt="C$ 1000">
+            <div class="card-body p-2 text-center bg-transparent">
+                <label class="fw-bold mb-1 fs-6">C$ 1000</label>
+                <input type="number" min="0" class="form-control form-control-lg text-center calc-cordoba border-secondary bg-transparent fw-bold" data-valor="1000" placeholder="Cant.">
+            </div>
+        </div>
+    </div>
+
+    <div class="col-6 col-sm-4 col-md-3">
+        <div class="card billete-card shadow-sm card-custom">
+            <img src="{% static 'billetes/500c.jpg' %}" class="card-img-top img-billete" alt="C$ 500">
+            <div class="card-body p-2 text-center bg-transparent">
+                <label class="fw-bold mb-1 fs-6">C$ 500</label>
+                <input type="number" min="0" class="form-control form-control-lg text-center calc-cordoba border-secondary bg-transparent fw-bold" data-valor="500" placeholder="Cant.">
+            </div>
+        </div>
+    </div>
+
+    <div class="col-6 col-sm-4 col-md-3">
+        <div class="card billete-card shadow-sm card-custom">
+            <img src="{% static 'billetes/200c.jpg' %}" class="card-img-top img-billete" alt="C$ 200">
+            <div class="card-body p-2 text-center bg-transparent">
+                <label class="fw-bold mb-1 fs-6">C$ 200</label>
+                <input type="number" min="0" class="form-control form-control-lg text-center calc-cordoba border-secondary bg-transparent fw-bold" data-valor="200" placeholder="Cant.">
+            </div>
+        </div>
+    </div>
+
+    <div class="col-6 col-sm-4 col-md-3">
+        <div class="card billete-card shadow-sm card-custom">
+            <img src="{% static 'billetes/100c.jpg' %}" class="card-img-top img-billete" alt="C$ 100">
+            <div class="card-body p-2 text-center bg-transparent">
+                <label class="fw-bold mb-1 fs-6">C$ 100</label>
+                <input type="number" min="0" class="form-control form-control-lg text-center calc-cordoba border-secondary bg-transparent fw-bold" data-valor="100" placeholder="Cant.">
+            </div>
+        </div>
+    </div>
+
+    <div class="col-6 col-sm-4 col-md-3">
+        <div class="card billete-card shadow-sm card-custom">
+            <img src="{% static 'billetes/50c.jpg' %}" class="card-img-top img-billete" alt="C$ 50">
+            <div class="card-body p-2 text-center bg-transparent">
+                <label class="fw-bold mb-1 fs-6">C$ 50</label>
+                <input type="number" min="0" class="form-control form-control-lg text-center calc-cordoba border-secondary bg-transparent fw-bold" data-valor="50" placeholder="Cant.">
+            </div>
+        </div>
+    </div>
+
+    <div class="col-6 col-sm-4 col-md-3">
+        <div class="card billete-card shadow-sm card-custom">
+            <img src="{% static 'billetes/20c.jpg' %}" class="card-img-top img-billete" alt="C$ 20">
+            <div class="card-body p-2 text-center bg-transparent">
+                <label class="fw-bold mb-1 fs-6">C$ 20</label>
+                <input type="number" min="0" class="form-control form-control-lg text-center calc-cordoba border-secondary bg-transparent fw-bold" data-valor="20" placeholder="Cant.">
+            </div>
+        </div>
+    </div>
+
+    <div class="col-6 col-sm-4 col-md-3">
+        <div class="card billete-card shadow-sm card-custom">
+            <img src="{% static 'billetes/10c.jpg' %}" class="card-img-top img-billete" alt="C$ 10">
+            <div class="card-body p-2 text-center bg-transparent">
+                <label class="fw-bold mb-1 fs-6">C$ 10</label>
+                <input type="number" min="0" class="form-control form-control-lg text-center calc-cordoba border-secondary bg-transparent fw-bold" data-valor="10" placeholder="Cant.">
+            </div>
+        </div>
+    </div>
+
+    <div class="col-6 col-sm-4 col-md-3">
+        <div class="card billete-card shadow-sm card-custom">
+            <img src="{% static 'billetes/b5c.jpg' %}" class="card-img-top img-billete" alt="Billete C$ 5">
+            <div class="card-body p-2 text-center bg-transparent">
+                <label class="fw-bold mb-1 fs-6">Bill. C$ 5</label>
+                <input type="number" min="0" class="form-control form-control-lg text-center calc-cordoba border-secondary bg-transparent fw-bold" data-valor="5" placeholder="Cant.">
+            </div>
+        </div>
+    </div>
+
+    <div class="col-6 col-sm-4 col-md-3">
+        <div class="card billete-card shadow-sm card-custom">
+            <img src="{% static 'billetes/m5c.jpg' %}" class="card-img-top img-billete" alt="Moneda C$ 5">
+            <div class="card-body p-2 text-center bg-transparent">
+                <label class="fw-bold mb-1 fs-6">Mon. C$ 5</label>
+                <input type="number" min="0" class="form-control form-control-lg text-center calc-cordoba border-secondary bg-transparent fw-bold" data-valor="5" placeholder="Cant.">
+            </div>
+        </div>
+    </div>
+
+    <div class="col-6 col-sm-4 col-md-3">
+        <div class="card billete-card shadow-sm card-custom">
+            <img src="{% static 'billetes/m1c.jpg' %}" class="card-img-top img-billete" alt="Moneda C$ 1">
+            <div class="card-body p-2 text-center bg-transparent">
+                <label class="fw-bold mb-1 fs-6">Mon. C$ 1</label>
+                <input type="number" min="0" class="form-control form-control-lg text-center calc-cordoba border-secondary bg-transparent fw-bold" data-valor="1" placeholder="Cant.">
+            </div>
+        </div>
+    </div>
+
+
+    <div class="col-12 mt-4">
+        <div class="d-flex justify-content-between align-items-center border-bottom border-success pb-2">
+            <h5 class="fw-bold text-success m-0"><i class="fas fa-dollar-sign"></i> Dólares ($)</h5>
+            <div class="input-group input-group-sm w-auto shadow-sm">
+                <span class="input-group-text bg-success text-white border-0 fw-bold">Tasa C$</span>
+                <input type="number" step="0.01" id="tasaCambio" class="form-control fw-bold border-success" value="36.60" style="max-width: 80px;">
+            </div>
+        </div>
+    </div>
+
+    <div class="col-6 col-sm-4 col-md-3">
+        <div class="card billete-card shadow-sm card-custom">
+            <img src="{% static 'billetes/20d.jpg' %}" class="card-img-top img-billete" alt="$ 20">
+            <div class="card-body p-2 text-center bg-transparent">
+                <label class="fw-bold mb-1 fs-6 text-success">$ 20</label>
+                <input type="number" min="0" class="form-control form-control-lg text-center calc-dolar border-secondary bg-transparent fw-bold" data-valor="20" placeholder="Cant.">
+            </div>
+        </div>
+    </div>
+
+    <div class="col-6 col-sm-4 col-md-3">
+        <div class="card billete-card shadow-sm card-custom">
+            <img src="{% static 'billetes/10d.jpg' %}" class="card-img-top img-billete" alt="$ 10">
+            <div class="card-body p-2 text-center bg-transparent">
+                <label class="fw-bold mb-1 fs-6 text-success">$ 10</label>
+                <input type="number" min="0" class="form-control form-control-lg text-center calc-dolar border-secondary bg-transparent fw-bold" data-valor="10" placeholder="Cant.">
+            </div>
+        </div>
+    </div>
+
+    <div class="col-6 col-sm-4 col-md-3">
+        <div class="card billete-card shadow-sm card-custom">
+            <img src="{% static 'billetes/5d.jpg' %}" class="card-img-top img-billete" alt="$ 5">
+            <div class="card-body p-2 text-center bg-transparent">
+                <label class="fw-bold mb-1 fs-6 text-success">$ 5</label>
+                <input type="number" min="0" class="form-control form-control-lg text-center calc-dolar border-secondary bg-transparent fw-bold" data-valor="5" placeholder="Cant.">
+            </div>
+        </div>
+    </div>
+
+    <div class="col-6 col-sm-4 col-md-3">
+        <div class="card billete-card shadow-sm card-custom">
+            <img src="{% static 'billetes/2d.jpg' %}" class="card-img-top img-billete" alt="$ 2">
+            <div class="card-body p-2 text-center bg-transparent">
+                <label class="fw-bold mb-1 fs-6 text-success">$ 2</label>
+                <input type="number" min="0" class="form-control form-control-lg text-center calc-dolar border-secondary bg-transparent fw-bold" data-valor="2" placeholder="Cant.">
+            </div>
+        </div>
+    </div>
+
+    <div class="col-6 col-sm-4 col-md-3">
+        <div class="card billete-card shadow-sm card-custom">
+            <img src="{% static 'billetes/1d.jpg' %}" class="card-img-top img-billete" alt="$ 1">
+            <div class="card-body p-2 text-center bg-transparent">
+                <label class="fw-bold mb-1 fs-6 text-success">$ 1</label>
+                <input type="number" min="0" class="form-control form-control-lg text-center calc-dolar border-secondary bg-transparent fw-bold" data-valor="1" placeholder="Cant.">
+            </div>
+        </div>
+    </div>
+</div>

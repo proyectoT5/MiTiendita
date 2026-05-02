@@ -1,0 +1,313 @@
+{% extends 'tienda/base.html' %}
+{% load static %}
+
+{% block title %}Control de Caja{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-4">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h2 class="fw-bold"><i class="fas fa-cash-register me-2 text-primary"></i> Control de Caja</h2>
+        <span class="badge bg-primary fs-6 px-3 py-2 shadow-sm">Usuario: {{ request.session.user_nombre }}</span>
+    </div>
+
+    {% if datos.estado == 'cerrada' %}
+        <div class="row justify-content-center align-items-center mt-5">
+            <div class="col-md-5 mt-5">
+                <div class="card card-custom shadow-lg border-0" style="border-radius: 15px;">
+                    <div class="card-header bg-primary text-white text-center border-0 pt-4 pb-3" style="border-radius: 15px 15px 0 0;">
+                        <h3 class="fw-bold mb-2"><i class="fas fa-store me-2"></i>Apertura de Caja</h3>
+                        <p class="small mb-0 opacity-75">Ingresá con cuánto efectivo iniciás el turno hoy</p>
+                    </div>
+                    <div class="card-body p-5">
+                        <form method="POST" action="{% url 'control_caja' %}">
+                            {% csrf_token %}
+                            <div class="mb-4">
+                                <label class="form-label fw-bold text-uppercase small">Monto Inicial (Base en Caja):</label>
+                                <div class="input-group input-group-lg shadow-sm" style="border-radius: 10px; overflow: hidden;">
+                                    <span class="input-group-text bg-transparent border-primary fw-bold text-primary">C$</span>
+                                    <input type="number" step="0.01" name="monto_inicial" class="form-control bg-transparent border-primary fw-bold" required placeholder="0.00" autofocus>
+                                </div>
+                            </div>
+                            <button type="submit" name="abrir_caja" class="btn btn-primary btn-lg w-100 fw-bold shadow-sm" style="border-radius: 10px;">
+                                <i class="fas fa-play-circle me-2"></i> INICIAR TURNO
+                            </button>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+    {% else %}
+        <div class="row g-4">
+            <div class="col-lg-4">
+                <div class="card card-custom shadow-lg border-0 mb-4" style="border-radius: 15px;">
+                    <div class="card-body p-4">
+                        <h5 class="card-title fw-bold mb-4 border-bottom pb-2">Resumen de Turno</h5>
+                        
+                        <div class="d-flex justify-content-between align-items-center mb-3">
+                            <span class="text-secondary">Monto Inicial:</span>
+                            <div class="d-flex align-items-center">
+                                <span class="fw-bold text-success me-2">C$ {{ datos.inicio|default:"0.00" }}</span>
+                                <button type="button" class="btn btn-sm btn-outline-primary px-2 py-0 shadow-sm" data-bs-toggle="modal" data-bs-target="#modalCorregir" title="Corregir monto inicial">
+                                    <i class="fas fa-edit"></i>
+                                </button>
+                            </div>
+                        </div>
+
+                        <div class="d-flex justify-content-between mb-3">
+                            <span class="text-secondary">Ventas del Turno:</span>
+                            <span class="fw-bold text-primary">C$ {{ datos.ventas|default:"0.00" }}</span>
+                        </div>
+                        <div class="d-flex justify-content-between mb-3">
+                            <span class="text-secondary">Gastos del Turno:</span>
+                            <span class="fw-bold text-danger">C$ {{ datos.gastos|default:"0.00" }}</span>
+                        </div>
+                        <hr class="border-secondary">
+                        <div class="d-flex justify-content-between align-items-center">
+                            <span class="h6 fw-bold">Esperado en Caja:</span>
+                            <span class="h5 fw-bold text-primary">C$ {{ datos.total_calculado|default:"0.00" }}</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="card card-custom shadow-lg border-0" style="border-radius: 15px;">
+                    <div class="card-body p-4">
+                        <h5 class="card-title fw-bold mb-4 border-bottom pb-2 text-danger">Cierre de Caja</h5>
+                        <form method="POST" action="{% url 'control_caja' %}" id="formCierre">
+                            {% csrf_token %}
+                            <input type="hidden" name="cerrar_caja" value="true">
+                            
+                            <input type="hidden" name="arqueo_detalle_json" id="inputArqueoJson" value="{}">
+                            
+                            <div class="mb-3">
+                                <label class="form-label fw-bold small text-uppercase text-muted">Monto Físico (Calculado por Asistente)</label>
+                                <div class="input-group input-group-lg shadow-sm" style="border-radius: 10px; overflow: hidden;">
+                                    <span class="input-group-text bg-danger text-white border-0 fw-bold">C$</span>
+                                    <input type="number" step="0.01" name="monto_fisico" id="inputMontoFisico" 
+                                           class="form-control bg-transparent border-0 fw-bold text-center" 
+                                           placeholder="0.00" readonly style="font-size: 1.8rem; background-color: rgba(0,0,0,0.05) !important;">
+                                </div>
+                                <small class="text-muted d-block text-center mt-2">Contá los billetes a la derecha para llenar este campo.</small>
+                            </div>
+                            
+                            <div id="displayDiferencia" class="alert d-none mb-3 text-center fw-bold shadow-sm" style="border-radius: 10px;"></div>
+
+                            <button type="button" id="btnIntentarCierre" class="btn btn-danger btn-lg w-100 fw-bold shadow mt-2" style="border-radius: 10px;">
+                                <i class="fas fa-lock me-2"></i> Cerrar Turno y Caja
+                            </button>
+                        </form>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-lg-8">
+                <div class="card card-custom shadow-lg border-0 h-100" style="border-radius: 15px;">
+                    <div class="card-header bg-transparent border-0 pt-4 px-4">
+                        <h5 class="fw-bold m-0"><i class="fas fa-calculator me-2 text-primary"></i> Asistente de Arqueo Visual</h5>
+                        <p class="text-secondary small">Ingresá la cantidad de billetes para calcular el monto físico automáticamente.</p>
+                    </div>
+                    <div class="card-body p-4">
+                        {% include 'tienda/arqueo_visual.html' %}
+                    </div>
+                    <div class="card-footer bg-transparent border-top border-secondary p-4">
+                        <div class="d-flex justify-content-between align-items-center">
+                            <span class="h5 m-0 fw-bold">Total Arqueo:</span>
+                            <span class="h3 m-0 fw-bold text-success" id="totalArqueoVisual">C$ 0.00</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="modal fade" id="modalCorregir" tabindex="-1" aria-hidden="true">
+          <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content card-custom border-0 shadow-lg" style="border-radius: 15px;">
+              <form method="POST" action="{% url 'control_caja' %}">
+                {% csrf_token %}
+                <div class="modal-header bg-primary text-white border-0" style="border-radius: 15px 15px 0 0;">
+                  <h5 class="modal-title fw-bold"><i class="fas fa-edit me-2"></i> Corregir Base Inicial</h5>
+                  <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body p-4">
+                  <label class="form-label fw-bold small text-uppercase">Escribe el monto real de apertura:</label>
+                  <div class="input-group input-group-lg shadow-sm border border-secondary rounded overflow-hidden mb-2">
+                      <span class="input-group-text bg-transparent border-0 text-primary fw-bold">C$</span>
+                      <input type="number" step="0.01" name="nuevo_monto_inicial" class="form-control bg-transparent border-0 fw-bold" value="{{ datos.inicio|floatformat:2 }}" required>
+                  </div>
+                  <p class="small text-muted mb-0">Esto recalculará el monto esperado en sistema automáticamente.</p>
+                </div>
+                <div class="modal-footer border-secondary bg-transparent border-top">
+                  <button type="button" class="btn btn-secondary fw-bold" data-bs-dismiss="modal">Cancelar</button>
+                  <button type="submit" name="corregir_apertura" class="btn btn-primary fw-bold shadow-sm">Guardar Corrección</button>
+                </div>
+              </form>
+            </div>
+          </div>
+        </div>
+
+        <div class="modal fade" id="modalAlertaCero" tabindex="-1" aria-hidden="true">
+          <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content card-custom border-0 shadow-lg" style="border-radius: 15px;">
+              <div class="modal-header bg-danger text-white border-0" style="border-radius: 15px 15px 0 0;">
+                <h5 class="modal-title fw-bold"><i class="fas fa-exclamation-triangle me-2"></i> ¡ALTO AHÍ!</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+              </div>
+              <div class="modal-body p-4 text-center">
+                <i class="fas fa-times-circle fa-3x text-danger mb-3 opacity-75"></i>
+                <h5 class="mb-3 fw-bold text-body">No podés cerrar con C$ 0.00</h5>
+                <p class="text-muted">Por favor, utilizá el <strong class="text-primary">Asistente de Arqueo</strong> a la derecha para ingresar los billetes y monedas que tenés físicamente en la caja antes de cerrar.</p>
+              </div>
+              <div class="modal-footer border-secondary bg-transparent border-top justify-content-center">
+                <button type="button" class="btn btn-secondary fw-bold px-4 shadow-sm" data-bs-dismiss="modal" style="border-radius: 8px;">Entendido</button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="modal fade" id="modalConfirmarCierre" tabindex="-1" aria-hidden="true">
+          <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content card-custom border-0 shadow-lg" style="border-radius: 15px;">
+              <div class="modal-header bg-warning text-dark border-0" style="border-radius: 15px 15px 0 0;">
+                <h5 class="modal-title fw-bold"><i class="fas fa-lock me-2"></i> Confirmar Cierre</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+              </div>
+              <div class="modal-body p-4 text-center">
+                <i class="fas fa-cash-register fa-3x text-warning mb-3 opacity-75"></i>
+                <h5 class="mb-3 fw-bold text-body">¿Seguro que deseas cerrar la caja?</h5>
+                
+                <div class="p-3 border border-warning rounded shadow-sm" style="background-color: rgba(255, 193, 7, 0.1);">
+                    <p class="mb-0 text-body opacity-75 fw-bold">Efectivo físico declarado:</p>
+                    <strong class="fs-2 text-warning" id="modalMontoDeclarado">C$ 0.00</strong>
+                </div>
+                
+                <p class="small text-muted mt-3 mb-0 fst-italic">Verificá que el conteo de billetes sea correcto antes de continuar.</p>
+              </div>
+              <div class="modal-footer border-secondary bg-transparent border-top justify-content-center gap-2">
+                <button type="button" class="btn btn-secondary fw-bold px-4" data-bs-dismiss="modal" style="border-radius: 8px;">Revisar de nuevo</button>
+                <button type="button" id="btnCierreDefinitivo" class="btn btn-warning fw-bold px-4 shadow-sm text-dark" style="border-radius: 8px;">
+                    Sí, cerrar turno
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+    {% endif %}
+</div>
+{% endblock %}
+
+{% block content_scripts %}
+{% if datos.estado != 'cerrada' %}
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        const inputsCordoba = document.querySelectorAll('.calc-cordoba');
+        const inputsDolar = document.querySelectorAll('.calc-dolar');
+        const tasaCambioInput = document.getElementById('tasaCambio');
+        const displayTotalArqueo = document.getElementById('totalArqueoVisual');
+        const inputMontoFisico = document.getElementById('inputMontoFisico');
+        const inputArqueoJson = document.getElementById('inputArqueoJson'); 
+        const displayDiferencia = document.getElementById('displayDiferencia');
+        
+        const formCierre = document.getElementById('formCierre'); 
+        const btnIntentarCierre = document.getElementById('btnIntentarCierre');
+        const btnCierreDefinitivo = document.getElementById('btnCierreDefinitivo');
+        
+        const esperado = parseFloat("{{ datos.total_calculado|default:0 }}".replace(',', '.'));
+
+        function calcularTodo() {
+            let totalC = 0;
+            let totalD = 0;
+            let tasa = parseFloat(tasaCambioInput?.value) || 0;
+            
+            let detalleBilletes = { "cordobas": {}, "dolares": {}, "tasa": tasa };
+
+            inputsCordoba.forEach(input => {
+                let valor = parseFloat(input.dataset.valor);
+                let cantidad = parseInt(input.value) || 0;
+                totalC += (valor * cantidad);
+                
+                let labelElem = input.closest('div').querySelector('label');
+                if(labelElem) {
+                    let nombreBillete = labelElem.innerText;
+                    detalleBilletes["cordobas"][nombreBillete] = cantidad;
+                }
+            });
+
+            inputsDolar.forEach(input => {
+                let valor = parseFloat(input.dataset.valor);
+                let cantidad = parseInt(input.value) || 0;
+                totalD += (valor * cantidad);
+                
+                let labelElem = input.closest('div').querySelector('label');
+                if(labelElem) {
+                    let nombreBillete = labelElem.innerText;
+                    detalleBilletes["dolares"][nombreBillete] = cantidad;
+                }
+            });
+
+            let granTotal = totalC + (totalD * tasa);
+            
+            displayTotalArqueo.innerText = `C$ ${granTotal.toLocaleString('en-US', {minimumFractionDigits: 2})}`;
+            inputMontoFisico.value = granTotal.toFixed(2);
+            inputArqueoJson.value = JSON.stringify(detalleBilletes);
+            
+            actualizarDiferencia(granTotal);
+        }
+
+        function actualizarDiferencia(fisico) {
+            let dif = fisico - esperado;
+            displayDiferencia.classList.remove('d-none', 'alert-success', 'alert-danger', 'alert-warning');
+            
+            if (fisico === 0) {
+                displayDiferencia.classList.add('d-none');
+                return;
+            }
+
+            if (Math.abs(dif) < 0.10) { 
+                displayDiferencia.innerText = "✅ Caja Cuadrada Perfecta";
+                displayDiferencia.classList.add('alert-success');
+            } else if (dif > 0) {
+                displayDiferencia.innerText = `💰 Sobrante: C$ ${dif.toFixed(2)}`;
+                displayDiferencia.classList.add('alert-warning');
+            } else {
+                displayDiferencia.innerText = `⚠️ Faltante: C$ ${Math.abs(dif).toFixed(2)}`;
+                displayDiferencia.classList.add('alert-danger');
+            }
+        }
+
+        // ==============================================
+        // LÓGICA DE LOS MODALES DE CIERRE
+        // ==============================================
+        if (btnIntentarCierre) {
+            btnIntentarCierre.addEventListener('click', function() {
+                let fisico = parseFloat(inputMontoFisico.value) || 0;
+                
+                if (fisico <= 0) {
+                    // Si está en 0, abrimos el modal Rojo (Error)
+                    var modalCero = new bootstrap.Modal(document.getElementById('modalAlertaCero'));
+                    modalCero.show();
+                } else {
+                    // Si hay dinero, abrimos el modal Amarillo (Confirmación)
+                    document.getElementById('modalMontoDeclarado').innerText = `C$ ${fisico.toLocaleString('en-US', {minimumFractionDigits: 2})}`;
+                    var modalConfirmar = new bootstrap.Modal(document.getElementById('modalConfirmarCierre'));
+                    modalConfirmar.show();
+                }
+            });
+        }
+
+        // Cuando el usuario le da a "Sí, cerrar turno" en el Modal Amarillo, enviamos el form
+        if (btnCierreDefinitivo) {
+            btnCierreDefinitivo.addEventListener('click', function() {
+                formCierre.submit();
+            });
+        }
+
+        [...inputsCordoba, ...inputsDolar, tasaCambioInput].forEach(el => {
+            if(el) el.addEventListener('input', calcularTodo);
+        });
+
+        calcularTodo();
+    });
+</script>
+{% endif %}
+{% endblock %}

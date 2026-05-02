@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <style>
+        @page {
+            size: letter portrait;
+            margin: 2cm;
+        }
+        body { font-family: Helvetica, sans-serif; color: #333; }
+        .header { text-align: center; margin-bottom: 30px; border-bottom: 2px solid #1e3c72; padding-bottom: 10px; }
+        .titulo { font-size: 24px; color: #1e3c72; font-weight: bold; text-transform: uppercase; }
+        .subtitulo { font-size: 14px; color: #666; }
+        
+        /* Cajas de Resumen */
+        .resumen-box {
+            width: 100%; margin-bottom: 30px;
+        }
+        .caja {
+            float: left; width: 45%; padding: 15px; 
+            background-color: #f0f4f8; border: 1px solid #ccc;
+            margin-right: 5%; border-radius: 5px;
+        }
+        .caja h3 { margin: 0; font-size: 14px; color: #555; }
+        .caja p { margin: 5px 0 0 0; font-size: 22px; font-weight: bold; color: #2a5298; }
+
+        /* Tabla */
+        table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+        th { background-color: #1e3c72; color: white; padding: 8px; text-align: left; font-size: 12px; }
+        td { border-bottom: 1px solid #ddd; padding: 8px; font-size: 12px; }
+        .text-right { text-align: right; }
+        
+        .footer { position: fixed; bottom: 0; width: 100%; text-align: center; font-size: 10px; color: #aaa; }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <div class="titulo">Mi Tiendita</div>
+        <div class="subtitulo">Informe Financiero Mensual</div>
+        <div style="font-size: 12px; margin-top: 5px;">Generado el: {{ fecha_hoy|date:"d \d\e F Y" }}</div>
+        <div style="font-size: 12px;">Por: {{ usuario }}</div>
+    </div>
+
+    <div class="resumen-box">
+        <div class="caja">
+            <h3>TOTAL VENDIDO (MES)</h3>
+            <p>C$ {{ venta_mes }}</p>
+        </div>
+        <div class="caja" style="margin-right: 0;">
+            <h3>GANANCIA ESTIMADA</h3>
+            <p>C$ {{ ganancia_mes }}</p>
+        </div>
+        <div style="clear: both;"></div>
+    </div>
+
+    <h3>📅 Desglose Diario de Ventas</h3>
+    <table>
+        <thead>
+            <tr>
+                <th>Fecha</th>
+                <th class="text-right">Tickets</th>
+                <th class="text-right">Total Vendido</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for v in ventas_diarias %}
+            <tr>
+                <td>{{ v.dia|date:"d \d\e F, Y" }}</td>
+                <td class="text-right">{{ v.tickets }}</td>
+                <td class="text-right">C$ {{ v.total|floatformat:2 }}</td>
+            </tr>
+            {% empty %}
+            <tr>
+                <td colspan="3" style="text-align: center; padding: 20px;">No hay ventas registradas este mes.</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+
+    <div class="footer">
+        Este es un documento generado automáticamente por el sistema Mi Tiendita.<br>
+        Uso interno y confidencial.
+    </div>
+</body>
+</html>

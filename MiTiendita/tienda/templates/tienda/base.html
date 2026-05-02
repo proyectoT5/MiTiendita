@@ -46,6 +46,17 @@
         .navbar-brand { font-weight: 600; letter-spacing: 1px; }
         .card { border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); }
         .card-hover:hover { transform: translateY(-5px); box-shadow: 0 8px 15px rgba(0,0,0,0.1); }
+
+        /* --- EFECTO DE MENÚ: BLANCO APAGADO A ENCENDIDO --- */
+        .navbar-nav .nav-link {
+            color: rgba(255, 255, 255, 0.55) !important; /* Blanco apagado */
+            font-weight: 500;
+            transition: color 0.3s ease-in-out, text-shadow 0.3s ease-in-out;
+        }
+        .navbar-nav .nav-link:hover {
+            color: #ffffff !important; /* Blanco encendido */
+            text-shadow: 0 0 10px rgba(255, 255, 255, 0.4); /* Brillo sutil tuani */
+        }
     </style>
 </head>
 <body>
@@ -66,21 +77,57 @@
 
     <nav class="navbar navbar-expand-lg navbar-dark fixed-top">
         <div class="container-fluid">
-            <a class="navbar-brand" href="{% url 'dashboard' %}"><i class="fas fa-store me-2"></i> Mi Tiendita</a>
+            <a class="navbar-brand text-white" href="{% url 'dashboard' %}"><i class="fas fa-store me-2"></i> Mi Tiendita</a>
+            
             <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarMain"><span class="navbar-toggler-icon"></span></button>
             <div class="collapse navbar-collapse" id="navbarMain">
-                <ul class="navbar-nav me-auto mb-2 mb-lg-0">
+                <ul class="navbar-nav me-auto mb-2 mb-lg-0 align-items-lg-center">
+                    
                     <li class="nav-item"><a class="nav-link" href="{% url 'productos_lista' %}"><i class="fas fa-box-open"></i> Productos</a></li>
+                    
                     <li class="nav-item"><a class="nav-link" href="{% url 'clientes_lista' %}"><i class="fas fa-users"></i> Clientes</a></li>
+                    
                     <li class="nav-item"><a class="nav-link" href="{% url 'proveedores_lista' %}"><i class="fas fa-truck-loading"></i> Proveedores</a></li>
-                    <li class="nav-item"><a class="nav-link" href="{% url 'prediccion_view' %}"><i class="fas fa-brain"></i> Predicción</a></li>
+                    
+                    <li class="nav-item">
+                        <a class="nav-link" href="{% url 'prediccion_view' %}">
+                            <i class="fas fa-calculator"></i> Predicción
+                        </a>
+                    </li>
+                    
+                    <li class="nav-item">
+                        <a class="nav-link" href="{% url 'control_caja' %}">
+                            <i class="fas fa-cash-register"></i> Caja (Turno)
+                        </a>
+                    </li>
+                    
                     <li class="nav-item"><a class="nav-link" href="{% url 'reportes_view' %}"><i class="fas fa-chart-pie"></i> Reportes</a></li>
-                    <li class="nav-item ms-lg-3"><a class="nav-link btn btn-light text-primary px-3 fw-bold" href="{% url 'facturacion_view' %}"><i class="fas fa-cash-register"></i> FACTURAR</a></li>
+                    
+                    <li class="nav-item">
+                        <a class="nav-link" href="{% url 'lista_deudores' %}">
+                            <i class="fas fa-hand-holding-usd"></i> Fiados/Deudas
+                        </a>
+                    </li>
+                    
+                    <li class="nav-item mx-lg-1">
+                        <a class="nav-link fw-bold" href="{% url 'facturacion_view' %}">
+                            <i class="fas fa-file-invoice-dollar"></i> FACTURAR
+                        </a>
+                    </li>
+                    
+                    <li class="nav-item">
+                        <a class="nav-link" href="{% url 'historial_facturas' %}">
+                            <i class="fas fa-history"></i> Historial
+                        </a>
+                    </li>
+                    
                     {% if request.session.user_rol == 'Admin' %}
-                        <li class="nav-item ms-lg-3"><a class="nav-link text-warning" href="{% url 'usuarios_lista' %}"><i class="fas fa-user-cog"></i> Usuarios</a></li>
-                        <li class="nav-item"><a class="nav-link text-info" href="{% url 'proveedor_producto_lista' %}"><i class="fas fa-tags"></i> Costos</a></li>
+                        <li class="nav-item ms-lg-1"><a class="nav-link" href="{% url 'usuarios_lista' %}"><i class="fas fa-user-cog"></i> Usuarios</a></li>
+                        
+                        <li class="nav-item"><a class="nav-link" href="{% url 'proveedor_producto_lista' %}"><i class="fas fa-tags"></i> Costos</a></li>
                     {% endif %}
                 </ul>
+                
                 <div class="d-flex align-items-center text-white">
                     <button class="btn btn-outline-light btn-sm me-3 border-0" id="darkModeToggle" title="Modo Oscuro">
                         <i class="fas fa-moon"></i>

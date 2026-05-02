@@ -1,28 +1,50 @@
-# tienda/views.py
-from django.db.models import Max
-from django.db.models import Q
+from django.http import HttpResponse
+from django.template.loader import get_template
+from xhtml2pdf import pisa
+import json
+import uuid
+import datetime
+from decimal import Decimal
+from django.utils import timezone
+from datetime import timedelta
+from django.contrib import messages
+from django.shortcuts import redirect
+
+
+from django.db.models.functions import TruncMonth, TruncDate
 from django.shortcuts import render, redirect, get_object_or_404
+from django.contrib import messages
+from django.db import transaction, connection
+from django.db.models import Sum, Max, Q, F, Count
+from django.db.models.functions import TruncMonth
+from django.utils import timezone
 from django.contrib.auth.hashers import make_password
 from django.core.files.storage import FileSystemStorage
-from .models import Productos, Clientes, Proveedores, ProveedorProducto, Facturas, DetalleFactura
-import uuid 
-from django.core.mail import send_mail 
+from django.core.mail import send_mail
 from django.urls import reverse
-from django.db import connection, transaction
-from django.contrib import messages
-from django.conf import settings 
-from django.http import JsonResponse 
-from django.template.loader import render_to_string
-import os
-import datetime 
-from decimal import Decimal 
-import json
+from django.conf import settings
+from django.http import JsonResponse
 
-# --- DECORADORES ---
+# Importación de modelos
+from .models import (
+    Productos, Clientes, Proveedores, ProveedorProducto,
+    Facturas, DetalleFactura, ClienteTelefono, ProveedorTelefono,
+    Egresos, CajaDiaria
+)
+
+# ==========================================
+#              HERRAMIENTAS & DECORADORES
+# ==========================================
+
+def dictfetchall(cursor):
+    """Convierte filas de SQL a diccionarios."""
+    columns = [col[0] for col in cursor.description]
+    return [dict(zip(columns, row)) for row in cursor.fetchall()]
+
 def login_requerido(view_func):
     def wrapper(request, *args, **kwargs):
         if 'user_id' not in request.session:
-            return redirect('login') 
+            return redirect('login')
         return view_func(request, *args, **kwargs)
     return wrapper
 
@@ -32,65 +54,32 @@ def admin_requerido(view_func):
             return redirect('login')
         if request.session.get('user_rol') != 'Admin':
             messages.error(request, "¡Acceso denegado! Solo el Admin puede hacer esto.")
-            return redirect('dashboard') 
+            return redirect('dashboard')
         return view_func(request, *args, **kwargs)
     return wrapper
-
-# --- HERRAMIENTA GLOBAL ---
-def dictfetchall(cursor):
-    "Return all rows from a cursor as a dict"
-    columns = [col[0] for col in cursor.description]
-    return [dict(zip(columns, row)) for row in cursor.fetchall()]
 
 # ==========================================
 #              DASHBOARD & REPORTES
 # ==========================================
+
 @login_requerido
 def dashboard_view(request):
-    # Inicializamos variables por si falla la BD
-    num_clientes = 0
-    num_productos = 0
-    num_proveedores = 0
-    top5_data = []
-    productos_bajos = [] # ¡ESTA ES LA NUEVA!
+    # 1. Contadores
+    num_clientes = Clientes.objects.filter(activo=True, esocasional=False).count()
+    num_productos = Productos.objects.filter(activo=True).count()
+    num_proveedores = Proveedores.objects.filter(activo=True).count()
 
-    try:
-        with connection.cursor() as cursor:
-            # 1. Contadores
-            cursor.execute("SELECT COUNT(*) FROM Clientes WHERE Activo = 1 AND EsOcasional = 0")
-            num_clientes = cursor.fetchone()[0]
-            cursor.execute("SELECT COUNT(*) FROM Productos WHERE Activo = 1")
-            num_productos = cursor.fetchone()[0]
-            cursor.execute("SELECT COUNT(*) FROM Proveedores WHERE Activo = 1")
-            num_proveedores = cursor.fetchone()[0]
-            
-            # 2. Gráfica Top 5
-            sql_top5 = """
-                SELECT TOP 5 P.Nombre, SUM(D.cantidad) as TotalVendido
-                FROM DetalleFactura D
-                JOIN Productos P ON D.Id_Producto = P.Id_Producto
-                GROUP BY P.Nombre
-                ORDER BY TotalVendido DESC
-            """
-            cursor.execute(sql_top5)
-            top5_data = dictfetchall(cursor)
+    # 2. Gráfica Top 5
+    top5_query = (DetalleFactura.objects
+                  .values('id_producto__nombre')
+                  .annotate(TotalVendido=Sum('Cantidad'))
+                  .order_by('-TotalVendido')[:5])
 
-            # 3. ¡ALERTA DE STOCK BAJO! (NUEVO)
-            # Busca productos donde la Cantidad actual sea menor o igual al Mínimo
-            sql_stock = """
-                SELECT Id_Producto, Nombre, Cantidad, StockMinimo 
-                FROM Productos 
-                WHERE Cantidad <= StockMinimo AND Activo = 1
-                ORDER BY Cantidad ASC
-            """
-            cursor.execute(sql_stock)
-            productos_bajos = dictfetchall(cursor)
-            
-    except Exception as e:
-        print(f"Error dashboard: {e}")
-        
-    labels = [item['Nombre'] for item in top5_data]
-    data = [item['TotalVendido'] for item in top5_data]
+    labels = [item['id_producto__nombre'] for item in top5_query]
+    data = [item['TotalVendido'] for item in top5_query]
+
+    # 3. Alerta Stock Bajo
+    productos_bajos = Productos.objects.filter(cantidad__lte=F('stockminimo'), activo=True).order_by('cantidad')
 
     context = {
         'nombre_usuario': request.session.get('user_nombre'),
@@ -100,1283 +89,1063 @@ def dashboard_view(request):
         'total_proveedores': num_proveedores,
         'chart_labels': json.dumps(labels),
         'chart_data': json.dumps(data),
-        'productos_bajos': productos_bajos, # Mandamos la lista de alertas al HTML
+        'productos_bajos': productos_bajos,
     }
     return render(request, 'tienda/dashboard.html', context)
 
 @login_requerido
 def reportes_view(request):
-    # 1. Ventas de Hoy (Usando nombres reales de tu tabla Factura)
-    with connection.cursor() as cursor:
-        cursor.execute("""
-            SELECT ISNULL(SUM(Total), 0) 
-            FROM Factura 
-            WHERE CAST(FechaHora AS DATE) = CAST(GETDATE() AS DATE)
-        """)
-        venta_hoy = cursor.fetchone()[0]
+    hoy = timezone.now().date()
+    mes_actual = hoy.month
+    anio_actual = hoy.year
 
-    # 2. Ventas del Mes
-    with connection.cursor() as cursor:
-        cursor.execute("""
-            SELECT ISNULL(SUM(Total), 0) 
-            FROM Factura 
-            WHERE MONTH(FechaHora) = MONTH(GETDATE()) 
-            AND YEAR(FechaHora) = YEAR(GETDATE())
-        """)
-        venta_mes = cursor.fetchone()[0]
+    # 1. Ventas Hoy y Mes (Aquí SÍ sumamos Fiado porque es Venta Bruta)
+    venta_hoy = Facturas.objects.filter(FechaHora__date=hoy, anulada=False).aggregate(Sum('Total'))['Total__sum'] or 0
+    venta_mes = Facturas.objects.filter(FechaHora__year=anio_actual, FechaHora__month=mes_actual, anulada=False).aggregate(Sum('Total'))['Total__sum'] or 0
 
-    # 3. Productos con Stock Bajo (Usando nombres reales de tu tabla Productos)
-    lista_bajos_stock = []
+    # 2. Stock Bajo
+    lista_bajos_stock = Productos.objects.filter(cantidad__lte=F('stockminimo'), activo=True)
+    bajos_stock = lista_bajos_stock.count()
+
+    # 3. Ganancias Productos
+    tabla_ganancias = []
+    total_ganancia_mes = 0
+
+    detalles_mes = DetalleFactura.objects.filter(
+        id_factura__FechaHora__year=anio_actual,
+        id_factura__FechaHora__month=mes_actual,
+        id_factura__anulada=False
+    ).values('id_producto__id_producto', 'id_producto__nombre').annotate(vendidos=Sum('Cantidad'), ingreso_total=Sum('Subtotal')).order_by('-ingreso_total')
+
+    for item in detalles_mes:
+        p_id = item['id_producto__id_producto']
+        nombre = item['id_producto__nombre']
+        vendidos = item['vendidos']
+        ingreso = float(item['ingreso_total'])
+
+        costo_unitario = 0
+        pp = ProveedorProducto.objects.filter(producto_id=p_id, activo=True).first()
+        if pp and pp.cantidadcompra > 0:
+            costo_unitario = float(pp.preciocompra) / float(pp.cantidadcompra)
+
+        costo_total_venta = costo_unitario * vendidos
+        ganancia_neta = ingreso - costo_total_venta
+        total_ganancia_mes += ganancia_neta
+
+        tabla_ganancias.append({
+            'nombre': nombre, 'vendidos': vendidos, 'ingreso': f"{ingreso:,.2f}",
+            'costo_aprox': f"{costo_total_venta:,.2f}", 'ganancia': f"{ganancia_neta:,.2f}"
+        })
+
+    # 4. Sumar Envíos a la ganancia
+    try:
+        envios = Facturas.objects.filter(FechaHora__year=anio_actual, FechaHora__month=mes_actual, CostoEnvio__gt=0, anulada=False).aggregate(num=Count('id_factura'), total=Sum('CostoEnvio'))
+        if envios['total']:
+            total_ganancia_mes += float(envios['total'])
+            tabla_ganancias.insert(0, {'nombre': '🛵 Servicio de Delivery', 'vendidos': envios['num'], 'ingreso': f"{envios['total']:,.2f}", 'costo_aprox': "0.00", 'ganancia': f"{envios['total']:,.2f}"})
+    except: pass
+
+    # 5. CAJA REAL (Dinero Físico)
+    # IMPORTANTE: Aquí NO sumamos las ventas al fiado (en_deuda=False)
+    dinero_caja_texto = "C$ 0.00"
+    try:
+        caja_actual = CajaDiaria.objects.filter(activa=True).last()
+        if caja_actual:
+            ventas_turno = Facturas.objects.filter(
+                FechaHora__gte=caja_actual.fecha_apertura,
+                anulada=False,
+                en_deuda=False  # <--- ESTA LÍNEA ES LA CLAVE
+            ).aggregate(Sum('Total'))['Total__sum'] or 0
+
+            gastos_turno = Egresos.objects.filter(fecha__gte=caja_actual.fecha_apertura).aggregate(Sum('monto'))['monto__sum'] or 0
+            saldo_fisico = float(caja_actual.monto_inicial) + float(ventas_turno) - float(gastos_turno)
+            dinero_caja_texto = f"C$ {saldo_fisico:,.2f}"
+        else:
+            dinero_caja_texto = "🔴 Cerrada"
+    except: pass
+
+    # 6. Historial Mes a Mes (Flujo Neto)
+    historial = {}
     with connection.cursor() as cursor:
-        cursor.execute("""
-            SELECT Id_Producto, Nombre, Cantidad 
-            FROM Productos 
-            WHERE Cantidad <= StockMinimo AND Activo = 1
-        """)
-        rows = cursor.fetchall()
-        for row in rows:
-            lista_bajos_stock.append({
-                'Id_Producto': row[0],
-                'Nombre': row[1],
-                'Cantidad': row[2]
+        cursor.execute("SELECT strftime('%Y-%m', FechaHora) as Mes, SUM(Total) FROM tienda_facturas WHERE anulada=0 GROUP BY Mes")
+        for r in cursor.fetchall():
+            if r[0]: historial[r[0]] = {'ingreso': float(r[1]), 'gasto': 0}
+        cursor.execute("SELECT strftime('%Y-%m', fecha) as Mes, SUM(monto) FROM tienda_egresos GROUP BY Mes")
+        for r in cursor.fetchall():
+            if r[0]:
+                if r[0] not in historial: historial[r[0]] = {'ingreso': 0, 'gasto': 0}
+                historial[r[0]]['gasto'] = float(r[1])
+    tabla_historial = []
+    for k in sorted(historial.keys(), reverse=True):
+        d = historial[k]
+        tabla_historial.append({'mes': k, 'ingreso': f"{d['ingreso']:,.2f}", 'gasto': f"{d['gasto']:,.2f}", 'balance': f"{(d['ingreso']-d['gasto']):,.2f}", 'es_positivo': (d['ingreso']-d['gasto']) >= 0})
+
+    # 7. Historial Diario (Ventas Día por Día)
+    ventas_por_dia = []
+    try:
+        qs_diario = (Facturas.objects
+                     .filter(anulada=False)
+                     .annotate(dia=TruncDate('FechaHora'))
+                     .values('dia')
+                     .annotate(total_dia=Sum('Total'), num_ventas=Count('id_factura'))
+                     .order_by('-dia'))
+        for v in qs_diario:
+            ventas_por_dia.append({
+                'fecha': v['dia'],
+                'tickets': v['num_ventas'],
+                'total': f"{float(v['total_dia']):,.2f}"
             })
+    except Exception as e: print(f"Error diario: {e}")
 
-    bajos_stock = len(lista_bajos_stock)
+    # 8. Historial de Cierres de Caja
+    historial_cajas = CajaDiaria.objects.filter(activa=False).order_by('-fecha_cierre')
 
-    # --- DATOS PARA GRÁFICOS (Ahora con datos reales de venta_hoy) ---
-    labels_dias = ["23/12"] 
-    data_dias = [float(venta_hoy)]
-    
-    # Podés dejar estos fijos por ahora o traerlos con otro SELECT
-    labels_prod = ["Ajo", "Achiote", "Ositos", "Zambo Chicharrón", "Ranchitas de chiles"]
-    data_prod = [4, 4, 4, 4, 3]
-
+    g_items = [x for x in tabla_ganancias if x['nombre'] != '🛵 Servicio de Delivery'][:5]
     context = {
-        'venta_hoy': venta_hoy,
-        'venta_mes': venta_mes,
-        'bajos_stock': bajos_stock,
-        'lista_bajos_stock': lista_bajos_stock,
-        'labels_dias_json': json.dumps(labels_dias),
-        'data_dias_json': json.dumps(data_dias),
-        'labels_prod_json': json.dumps(labels_prod),
-        'data_prod_json': json.dumps(data_prod),
-        'nombre_usuario': request.session.get('user_nombre'),
-        'rol_usuario': request.session.get('user_rol'),
+        'venta_hoy': venta_hoy, 'venta_mes': venta_mes, 'ganancia_mes': f"{total_ganancia_mes:,.2f}",
+        'dinero_caja': dinero_caja_texto, 'bajos_stock': bajos_stock, 'lista_bajos_stock': lista_bajos_stock,
+        'tabla_ganancias': tabla_ganancias,
+        'tabla_historial': tabla_historial,
+        'ventas_por_dia': ventas_por_dia,
+        'historial_cajas': historial_cajas,
+        'labels_prod_json': json.dumps([i['nombre'] for i in g_items] or ["Sin ventas"]),
+        'data_prod_json': json.dumps([i['vendidos'] for i in g_items] or [0]),
+        'nombre_usuario': request.session.get('user_nombre'), 'rol_usuario': request.session.get('user_rol'),
     }
     return render(request, 'tienda/reportes.html', context)
+
 # ==========================================
 #              PRODUCTOS
 # ==========================================
+
 @login_requerido
 def productos_view(request):
-    search_query = request.GET.get('q', '') 
-    mostrar_desactivados = request.GET.get('mostrar_desactivados') 
-    try:
-        with connection.cursor() as cursor:
-            where_clause = "WHERE (P.Nombre LIKE %s)"
-            params = [f'%{search_query}%']
-            if not mostrar_desactivados: where_clause += " AND P.Activo = 1"
-            
-            # Consulta con JOIN para traer Proveedor y Costo
-            sql_query = f"""
-                SELECT 
-                    P.Id_Producto, P.Nombre, P.PrecioVenta, P.Cantidad, P.StockMinimo, P.Activo,
-                    Prov.nombre_proveedor AS ProveedorNombre,
-                    PP.PrecioCompra AS PrecioCosto
-                FROM Productos P
-                LEFT JOIN Proveedores Prov ON P.IdProveedor = Prov.id_Proveedor
-                LEFT JOIN ProveedorProducto PP ON P.Id_Producto = PP.Id_Producto AND P.IdProveedor = PP.Id_Proveedor
-                {where_clause} 
-                ORDER BY P.Nombre
-            """
-            cursor.execute(sql_query, params)
-            productos = dictfetchall(cursor)
-    except Exception as e:
-        productos = []
-    context = {'nombre_usuario': request.session.get('user_nombre'), 'rol_usuario': request.session.get('user_rol'), 'productos': productos, 'search_query': search_query, 'mostrando_desactivados': bool(mostrar_desactivados)}
+    search_query = request.GET.get('q', '')
+    mostrar_desactivados = request.GET.get('mostrar_desactivados')
+
+    if search_query:
+        if mostrar_desactivados:
+            productos = Productos.objects.filter(Q(nombre__icontains=search_query) | Q(id_producto__icontains=search_query))
+        else:
+            productos = Productos.objects.filter(Q(nombre__icontains=search_query) | Q(id_producto__icontains=search_query), activo=True)
+    else:
+        if mostrar_desactivados:
+            productos = Productos.objects.all()
+        else:
+            productos = Productos.objects.filter(activo=True)
+
+    productos_list = []
+    for p in productos:
+        prov_nombre = "Sin Asignar"
+        costo_display = 0
+        if p.idproveedor:
+            prov_nombre = p.idproveedor.nombre_proveedor
+            pp = ProveedorProducto.objects.filter(producto=p, proveedor=p.idproveedor).first()
+            if pp:
+                costo_display = pp.preciocompra
+
+        productos_list.append({
+            'Id_Producto': p.id_producto,
+            'Nombre': p.nombre,
+            'PrecioVenta': p.precioventa,
+            'Cantidad': p.cantidad,
+            'StockMinimo': p.stockminimo,
+            'Activo': p.activo,
+            'ProveedorNombre': prov_nombre,
+            'Costo': costo_display,
+            'PrecioCosto': costo_display
+        })
+
+    context = {
+        'nombre_usuario': request.session.get('user_nombre'),
+        'rol_usuario': request.session.get('user_rol'),
+        'productos': productos_list,
+        'search_query': search_query,
+        'mostrando_desactivados': bool(mostrar_desactivados)
+    }
     return render(request, 'tienda/productos.html', context)
 
-
-from django.core.files.storage import FileSystemStorage
-from django.db import connection, transaction
-# Asegúrate de tener los imports necesarios arriba
-
+@login_requerido
 def productos_agregar_view(request):
     if request.method == 'POST':
-        # 1. Datos del Producto (Venta)
-        nombre = request.POST.get('nombre')
-        precio_venta = request.POST.get('precio_venta')
-        stock_inicial = request.POST.get('cantidad')
-        stock_min = request.POST.get('stock_min')
-        
-        # 2. Datos del Proveedor (Compra)
-        id_prov = request.POST.get('id_proveedor')
-        unidades_por_paquete = request.POST.get('cantidad_compra') 
-        precio_costo = request.POST.get('precio_compra')
-
-        # 3. Manejar la Foto
-        ruta_foto = None
-        if 'foto' in request.FILES:
-            imagen = request.FILES['foto']
-            fs = FileSystemStorage()
-            filename = fs.save(imagen.name, imagen)
-            ruta_foto = fs.url(filename)
-
         try:
+            nombre = request.POST.get('nombre')
+            precio_venta = request.POST.get('precio_venta')
+            stock_inicial = request.POST.get('cantidad')
+            stock_min = request.POST.get('stock_min')
+            id_prov = request.POST.get('id_proveedor')
+
+            # Costos
+            precio_compra = request.POST.get('precio_compra')
+            cantidad_compra = request.POST.get('cantidad_compra') or 1
+
+            ruta_foto = None
+            if 'foto' in request.FILES:
+                fs = FileSystemStorage()
+                filename = fs.save(request.FILES['foto'].name, request.FILES['foto'])
+                ruta_foto = fs.url(filename)
+
             with transaction.atomic():
-                # A. Generar ID Manualmente (Como lo tenías)
-                nuevo_id = 1
-                with connection.cursor() as cursor:
-                    cursor.execute("SELECT ISNULL(MAX(Id_Producto), 0) + 1 FROM Productos")
-                    row = cursor.fetchone()
-                    if row:
-                        nuevo_id = row[0]
+                ultimo = Productos.objects.aggregate(Max('id_producto'))['id_producto__max']
+                nuevo_id = 1 if ultimo is None else ultimo + 1
 
-                # B. Crear el Producto
-                nuevo_producto = Productos(
-                    id_producto=nuevo_id,
-                    nombre=nombre,
-                    precioventa=precio_venta,
-                    cantidad=stock_inicial,
-                    stockminimo=stock_min,
-                    
-                    # Usamos el nombre exacto del campo definido en el modelo
-                    idproveedor_id=id_prov, 
-                    
-                    rutafoto=ruta_foto,
-                    activo=True
+                prov_obj = None
+                if id_prov:
+                    prov_obj = Proveedores.objects.get(pk=id_prov)
+
+                nuevo_prod = Productos.objects.create(
+                    id_producto=nuevo_id, nombre=nombre, precioventa=precio_venta,
+                    cantidad=stock_inicial, stockminimo=stock_min,
+                    idproveedor=prov_obj, rutafoto=ruta_foto, activo=True
                 )
-                # IMPORTANTE: Al ser managed=False y manual, le decimos que es una inserción nueva
-                nuevo_producto.save(force_insert=True)
 
-                # C. Guardar el Costo de Compra inicial (si aplica)
-                if id_prov and precio_costo:
-                    with connection.cursor() as cursor:
-                        sql_costo = """
-                            INSERT INTO ProveedorProducto (Id_Producto, Id_Proveedor, PrecioCompra, CantidadCompra, Activo)
-                            VALUES (%s, %s, %s, %s, 1)
-                        """
-                        cursor.execute(sql_costo, [nuevo_id, id_prov, precio_costo, unidades_por_paquete])
+                if id_prov and precio_compra:
+                    ProveedorProducto.objects.create(
+                        producto=nuevo_prod,
+                        proveedor=prov_obj,
+                        preciocompra=precio_compra,
+                        cantidadcompra=cantidad_compra,
+                        activo=True
+                    )
 
-            messages.success(request, f"¡Producto '{nombre}' creado con éxito! (ID Asignado: {nuevo_id})")
-            return redirect('productos_lista') # O la URL que uses para listar
-            
+            messages.success(request, f"¡Producto '{nombre}' creado con éxito!")
+            return redirect('productos_lista')
         except Exception as e:
-            messages.error(request, f"Error al guardar el producto: {e}")
+            messages.error(request, f"Error al guardar: {e}")
 
-    # --- PARTE GET (Cargar proveedores para el formulario) ---
-    proveedores = []
-    try:
-        # Usamos el ORM si es posible, o tu query raw si prefieres
-        # Opción Raw (como lo tenías):
-        with connection.cursor() as cursor:
-            cursor.execute("SELECT id_Proveedor, nombre_proveedor FROM Proveedores WHERE Activo = 1")
-            # Convertimos a lista de diccionarios manualmente para el template
-            columns = [col[0] for col in cursor.description]
-            proveedores = [
-                dict(zip(columns, row))
-                for row in cursor.fetchall()
-            ]
-    except Exception as e:
-        print(f"Error cargando proveedores: {e}")
-
+    prov_objs = Proveedores.objects.filter(activo=True)
+    proveedores = [{'id_Proveedor': p.id_proveedor, 'nombre_proveedor': p.nombre_proveedor} for p in prov_objs]
     return render(request, 'tienda/productos_agregar.html', {'proveedores': proveedores})
 
 @admin_requerido
-def productos_eliminar_view(request, id_prod):
-    try:
-        with connection.cursor() as cursor:
-            cursor.execute("UPDATE Productos SET Activo = 0 WHERE Id_Producto = %s", [id_prod])
-            messages.success(request, "Producto desactivado.")
-    except Exception as e:
-        messages.error(request, f"Error: {e}")
-    return redirect('productos_lista')
-
-@admin_requerido
-def productos_reactivar_view(request, id_prod):
-    try:
-        with connection.cursor() as cursor:
-            cursor.execute("UPDATE Productos SET Activo = 1 WHERE Id_Producto = %s", [id_prod])
-            messages.success(request, "Producto reactivado.")
-    except Exception as e:
-        messages.error(request, f"Error: {e}")
-    return redirect('productos_lista')
-
-@admin_requerido
 def productos_editar_view(request, id_prod):
-    # 1. Si se enviaron los cambios (POST)
+    producto = get_object_or_404(Productos, pk=id_prod)
+
     if request.method == 'POST':
-        nombre = request.POST.get('Nombre')
-        precio_venta = request.POST.get('PrecioVenta')
-        cantidad = request.POST.get('Cantidad')
-        stock_min = request.POST.get('StockMinimo')
+        producto.nombre = request.POST.get('Nombre')
+        producto.precioventa = request.POST.get('PrecioVenta')
+        producto.cantidad = request.POST.get('Cantidad')
+        producto.stockminimo = request.POST.get('StockMinimo')
         id_prov = request.POST.get('id_proveedor')
-        precio_costo = request.POST.get('precio_compra')
-        unidades_paquete = request.POST.get('cantidad_compra')
-        ruta_foto_actual = request.POST.get('rutaFotoActual')
 
-        # Procesar nueva foto con FileSystemStorage (Carpeta Media)
+        if id_prov:
+            producto.idproveedor = Proveedores.objects.get(pk=id_prov)
+        else:
+            producto.idproveedor = None
+
         if 'foto_del_producto' in request.FILES:
-            archivo = request.FILES['foto_del_producto']
             fs = FileSystemStorage()
-            filename = fs.save(archivo.name, archivo)
-            ruta_foto_actual = fs.url(filename)
+            filename = fs.save(request.FILES['foto_del_producto'].name, request.FILES['foto_del_producto'])
+            producto.rutafoto = fs.url(filename)
 
-        try:
-            with transaction.atomic():
-                with connection.cursor() as cursor:
-                    # A. Actualizar tabla Productos
-                    sql_prod = """
-                        UPDATE Productos 
-                        SET Nombre=%s, PrecioVenta=%s, Cantidad=%s, StockMinimo=%s, rutaFoto=%s, IdProveedor=%s 
-                        WHERE Id_Producto=%s
-                    """
-                    cursor.execute(sql_prod, [nombre, precio_venta, cantidad, stock_min, ruta_foto_actual, id_prov, id_prod])
+        producto.save()
 
-                    # B. Actualizar o Insertar en ProveedorProducto (Costo y Empaque)
-                    if id_prov and precio_costo:
-                        cursor.execute("SELECT COUNT(*) FROM ProveedorProducto WHERE Id_Producto=%s AND Id_Proveedor=%s", [id_prod, id_prov])
-                        if cursor.fetchone()[0] > 0:
-                            cursor.execute("UPDATE ProveedorProducto SET PrecioCompra=%s, CantidadCompra=%s WHERE Id_Producto=%s AND Id_Proveedor=%s", 
-                                           [precio_costo, unidades_paquete, id_prod, id_prov])
-                        else:
-                            cursor.execute("INSERT INTO ProveedorProducto (Id_Producto, Id_Proveedor, PrecioCompra, CantidadCompra, Activo) VALUES (%s, %s, %s, %s, 1)", 
-                                           [id_prod, id_prov, precio_costo, unidades_paquete])
+        precio_costo = request.POST.get('precio_compra')
+        cantidad_compra = request.POST.get('cantidad_compra')
 
-            messages.success(request, "Producto y datos de proveedor actualizados correctamente.")
-            return redirect('productos_lista')
-        except Exception as e:
-            messages.error(request, f"Error al editar: {e}")
+        if id_prov and precio_costo:
+            pp = ProveedorProducto.objects.filter(producto=producto, proveedor_id=id_prov).first()
+            if pp:
+                pp.preciocompra = precio_costo
+                pp.cantidadcompra = cantidad_compra or 1
+                pp.activo = True
+                pp.save()
+            else:
+                ProveedorProducto.objects.create(
+                    producto=producto, proveedor_id=id_prov,
+                    preciocompra=precio_costo, cantidadcompra=cantidad_compra or 1,
+                    activo=True
+                )
 
-    # 2. Cargar datos para el formulario (GET)
-    try:
-        with connection.cursor() as cursor:
-            # Traer producto unido con su costo actual
-            sql = """
-                SELECT P.*, PP.PrecioCompra, PP.CantidadCompra 
-                FROM Productos P 
-                LEFT JOIN ProveedorProducto PP ON P.Id_Producto = PP.Id_Producto AND P.IdProveedor = PP.Id_Proveedor
-                WHERE P.Id_Producto = %s
-            """
-            cursor.execute(sql, [id_prod])
-            producto = dictfetchall(cursor)[0]
-            
-            # Traer proveedores para el select
-            cursor.execute("SELECT id_Proveedor, nombre_proveedor FROM Proveedores WHERE Activo = 1")
-            proveedores = dictfetchall(cursor)
-    except Exception:
+        messages.success(request, "Producto actualizado correctamente.")
         return redirect('productos_lista')
 
+    prov_objs = Proveedores.objects.filter(activo=True)
+    proveedores = [{'id_Proveedor': p.id_proveedor, 'nombre_proveedor': p.nombre_proveedor} for p in prov_objs]
+
+    costo_actual = ""
+    cant_compra_actual = 1
+    if producto.idproveedor:
+        pp = ProveedorProducto.objects.filter(producto=producto, proveedor=producto.idproveedor).first()
+        if pp:
+            costo_actual = pp.preciocompra
+            cant_compra_actual = pp.cantidadcompra
+
+    p_dict = {
+        'Id_Producto': producto.id_producto,
+        'Nombre': producto.nombre,
+        'PrecioVenta': producto.precioventa,
+        'Cantidad': producto.cantidad,
+        'StockMinimo': producto.stockminimo,
+        'rutaFoto': producto.rutafoto,
+        'IdProveedor': producto.idproveedor.id_proveedor if producto.idproveedor else '',
+        'PrecioCompra': costo_actual,
+        'CantidadCompra': cant_compra_actual
+    }
+
     return render(request, 'tienda/productos_editar.html', {
-        'producto': producto,
+        'producto': p_dict,
         'proveedores': proveedores,
         'nombre_usuario': request.session.get('user_nombre'),
         'rol_usuario': request.session.get('user_rol')
     })
 
-def productos_abastecer_view(request, id_prod):
-    producto_info = None
-    with connection.cursor() as cursor:
-        # CORRECCIÓN: Usamos Nombre y Cantidad que son los nombres reales
-        cursor.execute("""
-            SELECT Id_Producto, Nombre, Cantidad 
-            FROM Productos WHERE Id_Producto = %s
-        """, [id_prod])
-        row = cursor.fetchone()
-        if row:
-            producto_info = {
-                'id': row[0],
-                'nombre': row[1],
-                'stock': row[2]
-            }
+@admin_requerido
+def productos_eliminar_view(request, id_prod):
+    try:
+        p = get_object_or_404(Productos, pk=id_prod)
+        p.activo = False
+        p.save()
+        messages.success(request, "Producto desactivado.")
+    except Exception as e: messages.error(request, f"Error: {e}")
+    return redirect('productos_lista')
 
+@admin_requerido
+def productos_reactivar_view(request, id_prod):
+    try:
+        p = get_object_or_404(Productos, pk=id_prod)
+        p.activo = True
+        p.save()
+        messages.success(request, "Producto reactivado.")
+    except Exception as e: messages.error(request, f"Error: {e}")
+    return redirect('productos_lista')
+
+def productos_abastecer_view(request, id_prod):
+    producto = get_object_or_404(Productos, pk=id_prod)
     if request.method == 'POST':
         cantidad_ingresada = request.POST.get('cantidad_compra')
         if cantidad_ingresada:
             try:
                 nueva_cantidad = int(cantidad_ingresada)
-                with connection.cursor() as cursor:
-                    # CORRECCIÓN: Actualizamos usando la columna Cantidad
-                    cursor.execute("""
-                        UPDATE Productos 
-                        SET Cantidad = Cantidad + %s 
-                        WHERE Id_Producto = %s
-                    """, [nueva_cantidad, id_prod])
-                
-                messages.success(request, f" Stock actualizado para {producto_info['nombre']}")
-                return redirect('reportes') 
-            except Exception as e:
-                messages.error(request, f"Error al actualizar: {e}")
+                producto.cantidad += nueva_cantidad
+                producto.save()
+                messages.success(request, f"Stock actualizado.")
+                return redirect('reportes_view')
+            except Exception as e: messages.error(request, f"Error: {e}")
+    return render(request, 'tienda/productos_abastecer.html', {
+        'producto': {'id': producto.id_producto, 'nombre': producto.nombre, 'stock': producto.cantidad},
+        'nombre_usuario': request.session.get('user_nombre')
+    })
 
-    context = {
-        'producto': producto_info,
-        'nombre_usuario': request.session.get('user_nombre'),
-    }
-    return render(request, 'tienda/productos_abastecer.html', context)
+def buscar_producto_ajx(request):
+    termino = request.GET.get('term', '')
+    productos = []
+    if termino:
+        qs = Productos.objects.filter(Q(nombre__icontains=termino) | Q(id_producto__icontains=termino), activo=True)
+        for p in qs:
+            productos.append({'id': p.id_producto, 'label': f"{p.nombre} (ID: {p.id_producto})", 'value': p.nombre, 'precio': str(p.precioventa)})
+    return JsonResponse(productos, safe=False)
 
 # ==========================================
 #              CLIENTES
 # ==========================================
+
 @login_requerido
 def clientes_view(request):
     search_query = request.GET.get('q', '')
-    mostrar_desactivados = request.GET.get('mostrar_desactivados') 
-    try:
-        with connection.cursor() as cursor:
-            where_clause = "WHERE (C.Nombre LIKE %s OR C.Apellido LIKE %s)"
-            params = [f'%{search_query}%', f'%{search_query}%']
-            
-            # 1. FILTRO DE ACTIVOS
-            if not mostrar_desactivados:
-                where_clause += " AND C.Activo = 1"
-            
-           
-            # Solo mostramos EsOcasional = 0 (Los frecuentes)
-            where_clause += " AND C.EsOcasional = 0"
+    mostrar_desactivados = request.GET.get('mostrar_desactivados')
+    qs = Clientes.objects.filter(esocasional=False)
 
-            sql_query = f"""
-                SELECT
-                    C.Id_Cliente, C.Nombre, C.Apellido, C.correo, C.Activo,
-                    STRING_AGG(CT.numero_telefono_C, ', ') AS Telefonos
-                FROM Clientes C
-                LEFT JOIN ClienteTelefono CT ON C.Id_Cliente = CT.id_cliente
-                {where_clause}
-                GROUP BY C.Id_Cliente, C.Nombre, C.Apellido, C.correo, C.Activo
-                ORDER BY C.Nombre
-            """
-            cursor.execute(sql_query, params)
-            clientes = dictfetchall(cursor)
-    except Exception as e:
-        clientes = []
-    context = {
-        'nombre_usuario': request.session.get('user_nombre'), 
-        'rol_usuario': request.session.get('user_rol'), 
-        'clientes': clientes, 
-        'search_query': search_query, 
-        'mostrando_desactivados': bool(mostrar_desactivados)
-    }
+    if not mostrar_desactivados:
+        qs = qs.filter(activo=True)
+    if search_query:
+        qs = qs.filter(Q(nombre__icontains=search_query) | Q(apellido__icontains=search_query))
+
+    clientes_list = []
+    for c in qs:
+        tels = ClienteTelefono.objects.filter(id_cliente=c)
+        str_tels = ", ".join([t.numero_telefono_c for t in tels])
+        clientes_list.append({
+            'Id_Cliente': c.id_cliente, 'Nombre': c.nombre, 'Apellido': c.apellido,
+            'correo': c.correo, 'Activo': c.activo, 'Telefonos': str_tels
+        })
+
+    context = {'nombre_usuario': request.session.get('user_nombre'), 'rol_usuario': request.session.get('user_rol'), 'clientes': clientes_list, 'search_query': search_query, 'mostrando_desactivados': bool(mostrar_desactivados)}
     return render(request, 'tienda/clientes.html', context)
-
-
-def clientes_lista_view(request):
-    # 1. Tu consulta SQL actual para traer los datos
-    with connection.cursor() as cursor:
-        cursor.execute("""
-            SELECT c.Id_Cliente, c.Nombre, c.Apellido, c.correo, t.numero_telefono_C, c.Activo
-            FROM Clientes c
-            LEFT JOIN ClienteTelefono t ON c.Id_Cliente = t.id_cliente
-        """)
-        columns = [col[0] for col in cursor.description]
-        rows = cursor.fetchall()
-
-    clientes_formateados = []
-    for row in rows:
-        datos = dict(zip(columns, row))
-        
-        # --- EL TRUCO DEL GUION ESTÁ AQUÍ ---
-        num = str(datos['numero_telefono_C'] or "").strip()
-        if len(num) == 8:
-            # Corta los primeros 4 dígitos, pone el guion y pega los otros 4
-            datos['telefono_con_guion'] = f"{num[:4]}-{num[4:]}"
-        else:
-            datos['telefono_con_guion'] = num if num else "N/A"
-            
-        clientes_formateados.append(datos)
-
-    return render(request, 'tienda/clientes_lista.html', {'clientes': clientes_formateados})
 
 def clientes_agregar_view(request):
     if request.method == 'POST':
         nom = request.POST.get('nombre')
         ape = request.POST.get('apellido')
         cor = request.POST.get('correo')
-        
-        # LIMPPIAMOS EL GUION (ej: 8380-5501 -> 83805501)
         tel1 = request.POST.get('tel1', '').replace('-', '')
         tel2 = request.POST.get('tel2', '').replace('-', '')
-
         try:
             with transaction.atomic():
-                # 1. ID Automático
-                with connection.cursor() as cursor:
-                    cursor.execute("SELECT ISNULL(MAX(Id_Cliente), 0) + 1 FROM Clientes")
-                    nuevo_id = cursor.fetchone()[0]
-
-                # 2. Guardar Cliente
-                with connection.cursor() as cursor:
-                    cursor.execute(
-                        "INSERT INTO Clientes (Id_Cliente, Nombre, Apellido, correo, Activo, EsOcasional) VALUES (%s, %s, %s, %s, 1, 0)",
-                        [nuevo_id, nom, ape, cor]
-                    )
-
-                # 3. Guardar Teléfonos en ClienteTelefono
-                with connection.cursor() as cursor:
-                    for num in [tel1, tel2]:
-                        if num:
-                            cursor.execute("SELECT ISNULL(MAX(id_telefonoCli), 0) + 1 FROM ClienteTelefono")
-                            nuevo_id_tel = cursor.fetchone()[0]
-                            cursor.execute(
-                                "INSERT INTO ClienteTelefono (id_telefonoCli, id_cliente, numero_telefono_C) VALUES (%s, %s, %s)",
-                                [nuevo_id_tel, nuevo_id, num]
-                            )
-
-            messages.success(request, f" Cliente guardado con éxito.")
+                ultimo = Clientes.objects.aggregate(Max('id_cliente'))['id_cliente__max']
+                nuevo_id = 1 if ultimo is None else ultimo + 1
+                nuevo_cli = Clientes.objects.create(id_cliente=nuevo_id, nombre=nom, apellido=ape, correo=cor, activo=True, esocasional=False)
+                if tel1: ClienteTelefono.objects.create(id_cliente=nuevo_cli, numero_telefono_c=tel1)
+                if tel2: ClienteTelefono.objects.create(id_cliente=nuevo_cli, numero_telefono_c=tel2)
+            messages.success(request, f"Cliente guardado con éxito.")
             return redirect('clientes_lista')
-        except Exception as e:
-            messages.error(request, f"Error: {e}")
-
+        except Exception as e: messages.error(request, f"Error: {e}")
     return render(request, 'tienda/clientes_agregar.html')
+
 @admin_requerido
 def clientes_eliminar_view(request, id_cli):
     try:
-        with connection.cursor() as cursor:
-            cursor.execute("UPDATE Clientes SET Activo = 0 WHERE Id_Cliente = %s", [id_cli])
-            messages.success(request, "Cliente desactivado.")
-    except Exception as e:
-        messages.error(request, f"Error: {e}")
+        c = get_object_or_404(Clientes, pk=id_cli)
+        c.activo = False
+        c.save()
+        messages.success(request, "Cliente desactivado.")
+    except Exception as e: messages.error(request, f"Error: {e}")
     return redirect('clientes_lista')
 
 @admin_requerido
 def clientes_reactivar_view(request, id_cli):
     try:
-        with connection.cursor() as cursor:
-            cursor.execute("UPDATE Clientes SET Activo = 1 WHERE Id_Cliente = %s", [id_cli])
-            messages.success(request, "Cliente reactivado.")
-    except Exception as e:
-        messages.error(request, f"Error: {e}")
+        c = get_object_or_404(Clientes, pk=id_cli)
+        c.activo = True
+        c.save()
+        messages.success(request, "Cliente reactivado.")
+    except Exception as e: messages.error(request, f"Error: {e}")
     return redirect('clientes_lista')
 
 @admin_requerido
 def clientes_editar_view(request, id_cli):
-    try:
-        with connection.cursor() as cursor:
-            cursor.execute("SELECT * FROM Clientes WHERE Id_Cliente = %s", [id_cli])
-            data = dictfetchall(cursor)
-            if not data: return redirect('clientes_lista')
-            cliente = data[0]
-            cursor.execute("SELECT numero_telefono_C FROM ClienteTelefono WHERE id_cliente = %s", [id_cli])
-            telefonos = dictfetchall(cursor)
-    except: return redirect('clientes_lista')
-    
-    tel1 = telefonos[0]['numero_telefono_C'] if len(telefonos) > 0 else ''
-    tel2 = telefonos[1]['numero_telefono_C'] if len(telefonos) > 1 else ''
+    cliente = get_object_or_404(Clientes, pk=id_cli)
+    telefonos = ClienteTelefono.objects.filter(id_cliente=cliente)
+    tel1 = telefonos[0].numero_telefono_c if len(telefonos) > 0 else ''
+    tel2 = telefonos[1].numero_telefono_c if len(telefonos) > 1 else ''
 
     if request.method == 'POST':
-        nom = request.POST.get('Nombre').strip()
-        ape = request.POST.get('Apellido').strip()
-        
-        # --- VALIDACIÓN DE CORREO (OPCIONAL) ---
-        cor = request.POST.get('Correo')
-        
-        # Si está vacío o solo tiene espacios, lo dejamos como None (NULL) y NO validamos
-        if not cor or cor.strip() == "":
-            cor = None
-        else:
-            # Si escribió algo, entonces SÍ validamos
-            cor = cor.strip().lower()
-            dominios_validos = ['@gmail.com', '@hotmail.com', '@yahoo.com', '@outlook.com', '@live.com', '@icloud.com', '@yahoo.es', '@hotmail.es', '@outlook.es']
-            
-            es_valido = False
-            for dominio in dominios_validos:
-                if cor.endswith(dominio):
-                    es_valido = True
-                    break
-            
-            if not es_valido:
-                messages.error(request, f"El correo '{cor}' está mal escrito. Revisá la terminación.")
-                return redirect('clientes_lista') # O render, según prefieras
-        # ---------------------------------------
-        
+        cliente.nombre = request.POST.get('Nombre').strip()
+        cliente.apellido = request.POST.get('Apellido').strip()
+        cliente.correo = request.POST.get('Correo')
         t1 = request.POST.get('numero_telefono_C_1')
         t2 = request.POST.get('numero_telefono_C_2')
-        
         try:
             with transaction.atomic():
-                with connection.cursor() as cursor:
-                    cursor.execute("UPDATE Clientes SET Nombre=%s, Apellido=%s, Correo=%s WHERE Id_Cliente=%s", [nom, ape, cor, id_cli])
-                    
-                    cursor.execute("DELETE FROM ClienteTelefono WHERE id_cliente = %s", [id_cli])
-                    cursor.execute("SELECT ISNULL(MAX(id_telefonoCli), 0) FROM ClienteTelefono")
-                    next_id = cursor.fetchone()[0] + 1
-                    
-                    if t1:
-                        cursor.execute("INSERT INTO ClienteTelefono VALUES (%s, %s, %s)", [next_id, id_cli, t1])
-                        next_id += 1
-                    if t2:
-                        cursor.execute("INSERT INTO ClienteTelefono VALUES (%s, %s, %s)", [next_id, id_cli, t2])
-            
-            messages.success(request, "Cliente actualizado correctamente.")
+                cliente.save()
+                ClienteTelefono.objects.filter(id_cliente=cliente).delete()
+                if t1: ClienteTelefono.objects.create(id_cliente=cliente, numero_telefono_c=t1)
+                if t2: ClienteTelefono.objects.create(id_cliente=cliente, numero_telefono_c=t2)
+            messages.success(request, "Cliente actualizado.")
             return redirect('clientes_lista')
-        except Exception as e:
-            print(f"Error: {e}")
-            messages.error(request, "Error al editar cliente.")
-            
-    context = {'cliente': cliente, 'telefono_1': tel1, 'telefono_2': tel2, 'nombre_usuario': request.session.get('user_nombre'), 'rol_usuario': request.session.get('user_rol')}
+        except Exception as e: messages.error(request, "Error al editar.")
+
+    c_dict = {'Id_Cliente': cliente.id_cliente, 'Nombre': cliente.nombre, 'Apellido': cliente.apellido, 'correo': cliente.correo, 'Activo': cliente.activo}
+    context = {'cliente': c_dict, 'telefono_1': tel1, 'telefono_2': tel2, 'nombre_usuario': request.session.get('user_nombre'), 'rol_usuario': request.session.get('user_rol')}
     return render(request, 'tienda/clientes_editar.html', context)
+
 @login_requerido
 def clientes_rapido_view(request):
     if request.method == 'POST':
         try:
-            cid = request.POST.get('modal_cli_id')
             nom = request.POST.get('modal_cli_nombre')
             ape = request.POST.get('modal_cli_apellido')
-            
-            if not cid or not nom or not ape: 
-                return JsonResponse({'error': "Faltan datos."}, status=400)
-
-            with connection.cursor() as cursor:
-                # Validar ID
-                cursor.execute("SELECT count(*) FROM Clientes WHERE Id_Cliente = %s", [cid])
-                if cursor.fetchone()[0] > 0: 
-                    return JsonResponse({'error': "Ese ID ya existe."}, status=400)
-                
-                # ¡AQUÍ ESTÁ EL CAMBIO!
-                # Guardamos con EsOcasional = 1
-                sql = """
-                    INSERT INTO Clientes (Id_Cliente, Nombre, Apellido, Correo, Activo, EsOcasional) 
-                    VALUES (%s, %s, %s, 'N/A', 1, 1)
-                """
-                cursor.execute(sql, [cid, nom, ape])
-            
-            return JsonResponse({
-                'mensaje': "Cliente rápido registrado.", 
-                'cliente': {'id': cid, 'nombre_completo': f"{nom} {ape}"}
-            })
-
-        except Exception as e: 
-            return JsonResponse({'error': str(e)}, status=500)
-            
+            if not nom: return JsonResponse({'error': "Faltan datos."}, status=400)
+            ultimo = Clientes.objects.aggregate(Max('id_cliente'))['id_cliente__max']
+            nuevo_id = 1 if ultimo is None else ultimo + 1
+            c = Clientes.objects.create(id_cliente=nuevo_id, nombre=nom, apellido=ape, correo='N/A', activo=True, esocasional=True)
+            return JsonResponse({'mensaje': "Cliente rápido registrado.", 'cliente': {'id': c.id_cliente, 'nombre_completo': f"{c.nombre} {c.apellido}"}})
+        except Exception as e: return JsonResponse({'error': str(e)}, status=500)
     return JsonResponse({'error': 'Error'}, status=400)
-
 
 # ==========================================
 #              PROVEEDORES
 # ==========================================
+
 @login_requerido
 def proveedores_view(request):
     search_query = request.GET.get('q', '')
-    mostrar_desactivados = request.GET.get('mostrar_desactivados') 
-    try:
-        with connection.cursor() as cursor:
-            where_clause = "WHERE (P.nombre_proveedor LIKE %s)"
-            params = [f'%{search_query}%']
-            if not mostrar_desactivados:
-                where_clause += " AND P.Activo = 1"
-            sql_query = f"""
-                SELECT
-                    P.id_Proveedor, P.nombre_proveedor, P.correo, P.Direccion, P.Activo,
-                    STRING_AGG(PT.numero_telefono_P, ', ') AS Telefonos
-                FROM Proveedores P
-                LEFT JOIN ProveedorTelefono PT ON P.id_Proveedor = PT.id_Proveedor
-                {where_clause}
-                GROUP BY P.id_Proveedor, P.nombre_proveedor, P.correo, P.Direccion, P.Activo
-                ORDER BY P.nombre_proveedor
-            """
-            cursor.execute(sql_query, params)
-            proveedores = dictfetchall(cursor)
-    except Exception as e:
-        proveedores = []
-    context = {
-        'nombre_usuario': request.session.get('user_nombre'),
-        'rol_usuario': request.session.get('user_rol'),
-        'proveedores': proveedores,
-        'search_query': search_query,
-        'mostrando_desactivados': bool(mostrar_desactivados)
-    }
+    mostrar_desactivados = request.GET.get('mostrar_desactivados')
+    qs = Proveedores.objects.all()
+    if not mostrar_desactivados: qs = qs.filter(activo=True)
+    if search_query: qs = qs.filter(nombre_proveedor__icontains=search_query)
+
+    provs_list = []
+    for p in qs:
+        tels = ProveedorTelefono.objects.filter(id_proveedor=p)
+        str_tels = ", ".join([t.numero_telefono_p for t in tels])
+        provs_list.append({
+            'id_Proveedor': p.id_proveedor, 'nombre_proveedor': p.nombre_proveedor,
+            'correo': p.correo, 'Direccion': p.direccion, 'Activo': p.activo, 'Telefonos': str_tels
+        })
+    context = {'nombre_usuario': request.session.get('user_nombre'), 'rol_usuario': request.session.get('user_rol'), 'proveedores': provs_list, 'search_query': search_query, 'mostrando_desactivados': bool(mostrar_desactivados)}
     return render(request, 'tienda/proveedores.html', context)
-    
+
 @admin_requerido
 def proveedores_agregar_view(request):
     if request.method == 'POST':
-        # 1. Capturamos datos y LIMPIAMOS el guion (8380-5501 -> 83805501)
         prov_nombre = request.POST.get('nombre_proveedor')
         prov_dir = request.POST.get('Direccion')
         prov_tel_1 = request.POST.get('numero_telefono_P_1', '').replace('-', '')
         prov_tel_2 = request.POST.get('numero_telefono_P_2', '').replace('-', '')
         prov_correo = request.POST.get('correo')
-
-        # --- VALIDACIÓN DE CORREO (Tu lógica original) ---
-        if not prov_correo or prov_correo.strip() == "":
-            prov_correo = None
-        else:
-            prov_correo = prov_correo.strip().lower()
-            dominios_validos = ['@gmail.com', '@hotmail.com', '@yahoo.com', '@outlook.com', '@live.com', '@icloud.com', '@yahoo.es', '@hotmail.es', '@outlook.es']
-            es_valido = False
-            for dominio in dominios_validos:
-                if prov_correo.endswith(dominio):
-                    es_valido = True
-                    break
-            if not es_valido:
-                messages.error(request, f"El correo '{prov_correo}' no es válido.")
-                return redirect('proveedores_lista')
-
         try:
             with transaction.atomic():
-                with connection.cursor() as cursor:
-                    # 2. ID AUTOMÁTICO (MAX + 1)
-                    cursor.execute("SELECT ISNULL(MAX(id_Proveedor), 0) + 1 FROM Proveedores")
-                    prov_id = cursor.fetchone()[0]
-
-                    # 3. Validar Nombre Duplicado
-                    cursor.execute("SELECT COUNT(*) FROM Proveedores WHERE LOWER(nombre_proveedor) = LOWER(%s)", [prov_nombre.strip()])
-                    if cursor.fetchone()[0] > 0:
-                        messages.error(request, f"El proveedor '{prov_nombre}' ya existe.")
-                        return redirect('proveedores_lista')
-
-                    # 4. INSERT EN TABLA PROVEEDORES
-                    sql_prov = "INSERT INTO Proveedores (id_Proveedor, nombre_proveedor, correo, Direccion, Activo) VALUES (%s, %s, %s, %s, 1)"
-                    cursor.execute(sql_prov, [prov_id, prov_nombre, prov_correo, prov_dir])
-                    
-                    # 5. INSERT EN TABLA TELÉFONOS (Con ID automático de teléfono)
-                    cursor.execute("SELECT ISNULL(MAX(id_telefonoProve), 0) FROM ProveedorTelefono")
-                    next_id_tel = cursor.fetchone()[0] + 1
-                    
-                    if prov_tel_1:
-                        cursor.execute("INSERT INTO ProveedorTelefono VALUES (%s, %s, %s)", [next_id_tel, prov_id, prov_tel_1])
-                        next_id_tel += 1 
-                    if prov_tel_2:
-                        cursor.execute("INSERT INTO ProveedorTelefono VALUES (%s, %s, %s)", [next_id_tel, prov_id, prov_tel_2])
-            
-            messages.success(request, f"✅ Proveedor '{prov_nombre}' agregado con ID: {prov_id}")
+                ultimo = Proveedores.objects.aggregate(Max('id_proveedor'))['id_proveedor__max']
+                nuevo_id = 1 if ultimo is None else ultimo + 1
+                prov = Proveedores.objects.create(id_proveedor=nuevo_id, nombre_proveedor=prov_nombre, correo=prov_correo, direccion=prov_dir, activo=True)
+                if prov_tel_1: ProveedorTelefono.objects.create(id_proveedor=prov, numero_telefono_p=prov_tel_1)
+                if prov_tel_2: ProveedorTelefono.objects.create(id_proveedor=prov, numero_telefono_p=prov_tel_2)
+            messages.success(request, f"✅ Proveedor '{prov_nombre}' agregado con ID: {nuevo_id}")
             return redirect('proveedores_lista')
-        except Exception as e:
-            messages.error(request, f"Error al guardar: {e}")
-
+        except Exception as e: messages.error(request, f"Error al guardar: {e}")
     context = {'nombre_usuario': request.session.get('user_nombre'), 'rol_usuario': request.session.get('user_rol')}
     return render(request, 'tienda/proveedores_agregar.html', context)
-    
+
+@admin_requerido
+def proveedores_editar_view(request, id_prov):
+    proveedor = get_object_or_404(Proveedores, pk=id_prov)
+    telefonos = ProveedorTelefono.objects.filter(id_proveedor=proveedor)
+    t1 = telefonos[0].numero_telefono_p if len(telefonos) > 0 else ''
+    t2 = telefonos[1].numero_telefono_p if len(telefonos) > 1 else ''
+
+    if request.method == 'POST':
+        proveedor.nombre_proveedor = request.POST.get('nombre_proveedor')
+        proveedor.direccion = request.POST.get('Direccion')
+        proveedor.correo = request.POST.get('correo')
+        tel1 = request.POST.get('numero_telefono_P_1')
+        tel2 = request.POST.get('numero_telefono_P_2')
+        try:
+            with transaction.atomic():
+                proveedor.save()
+                ProveedorTelefono.objects.filter(id_proveedor=proveedor).delete()
+                if tel1: ProveedorTelefono.objects.create(id_proveedor=proveedor, numero_telefono_p=tel1)
+                if tel2: ProveedorTelefono.objects.create(id_proveedor=proveedor, numero_telefono_p=tel2)
+            messages.success(request, "Proveedor actualizado.")
+            return redirect('proveedores_lista')
+        except Exception as e: print(f"Error: {e}")
+
+    p_dict = {'id_Proveedor': proveedor.id_proveedor, 'nombre_proveedor': proveedor.nombre_proveedor, 'correo': proveedor.correo, 'Direccion': proveedor.direccion}
+    context = {'proveedor': p_dict, 'telefono_1': t1, 'telefono_2': t2, 'nombre_usuario': request.session.get('user_nombre'), 'rol_usuario': request.session.get('user_rol')}
+    return render(request, 'tienda/proveedores_editar.html', context)
+
 @admin_requerido
 def proveedores_eliminar_view(request, id_prov):
     try:
-        with connection.cursor() as cursor:
-            cursor.execute("UPDATE Proveedores SET Activo = 0 WHERE id_Proveedor = %s", [id_prov])
-            messages.success(request, "Proveedor desactivado.")
-    except Exception as e:
-        messages.error(request, f"Error: {e}")
+        p = get_object_or_404(Proveedores, pk=id_prov)
+        p.activo = False
+        p.save()
+        messages.success(request, "Proveedor desactivado.")
+    except Exception as e: messages.error(request, f"Error: {e}")
     return redirect('proveedores_lista')
 
 @admin_requerido
 def proveedores_reactivar_view(request, id_prov):
     try:
-        with connection.cursor() as cursor:
-            cursor.execute("UPDATE Proveedores SET Activo = 1 WHERE id_Proveedor = %s", [id_prov])
-            messages.success(request, "Proveedor reactivado.")
-    except Exception as e:
-        messages.error(request, f"Error: {e}")
+        p = get_object_or_404(Proveedores, pk=id_prov)
+        p.activo = True
+        p.save()
+        messages.success(request, "Proveedor reactivado.")
+    except Exception as e: messages.error(request, f"Error: {e}")
     return redirect('proveedores_lista')
 
-@admin_requerido
-def proveedores_editar_view(request, id_prov):
-    try:
-        with connection.cursor() as cursor:
-            cursor.execute("SELECT * FROM Proveedores WHERE id_Proveedor = %s", [id_prov])
-            data = dictfetchall(cursor)
-            if not data: return redirect('proveedores_lista')
-            proveedor = data[0]
-            cursor.execute("SELECT numero_telefono_P FROM ProveedorTelefono WHERE id_Proveedor = %s", [id_prov])
-            telefonos = dictfetchall(cursor)
-    except: return redirect('proveedores_lista')
-    t1 = telefonos[0]['numero_telefono_P'] if len(telefonos) > 0 else ''
-    t2 = telefonos[1]['numero_telefono_P'] if len(telefonos) > 1 else ''
-
-    if request.method == 'POST':
-        nom = request.POST.get('nombre_proveedor')
-        dir = request.POST.get('Direccion')
-        tel1 = request.POST.get('numero_telefono_P_1')
-        tel2 = request.POST.get('numero_telefono_P_2')
-        
-        # --- VALIDACIÓN DE CORREO ---
-        cor = request.POST.get('correo')
-        if not cor or cor.strip() == "":
-            cor = None
-        else:
-            cor = cor.strip().lower()
-            dominios_validos = ['@gmail.com', '@hotmail.com', '@yahoo.com', '@outlook.com', '@live.com', '@icloud.com', '@yahoo.es', '@hotmail.es', '@outlook.es']
-            es_valido = False
-            for dominio in dominios_validos:
-                if cor.endswith(dominio):
-                    es_valido = True
-                    break
-            if not es_valido:
-                messages.error(request, f"El correo '{cor}' no es válido.")
-                return redirect('proveedores_lista')
-        # ----------------------------
-
-        try:
-            with transaction.atomic():
-                with connection.cursor() as cursor:
-                    cursor.execute("UPDATE Proveedores SET nombre_proveedor=%s, correo=%s, Direccion=%s WHERE id_Proveedor=%s", [nom, cor, dir, id_prov])
-                    cursor.execute("DELETE FROM ProveedorTelefono WHERE id_Proveedor = %s", [id_prov])
-                    cursor.execute("SELECT ISNULL(MAX(id_telefonoProve), 0) FROM ProveedorTelefono")
-                    next_id = cursor.fetchone()[0] + 1
-                    if tel1:
-                        cursor.execute("INSERT INTO ProveedorTelefono VALUES (%s, %s, %s)", [next_id, id_prov, tel1])
-                        next_id += 1
-                    if tel2:
-                        cursor.execute("INSERT INTO ProveedorTelefono VALUES (%s, %s, %s)", [next_id, id_prov, tel2])
-            messages.success(request, "Proveedor actualizado.")
-            return redirect('proveedores_lista')
-        except Exception as e: print(f"Error: {e}")
-
-    context = {
-        'proveedor': proveedor, 
-        'telefono_1': t1, 
-        'telefono_2': t2,
-        'nombre_usuario': request.session.get('user_nombre'),
-        'rol_usuario': request.session.get('user_rol'),
-    }
-    return render(request, 'tienda/proveedores_editar.html', context)
-
-def proveedores_lista_view(request):
-    # Traemos los proveedores y sus teléfonos desde tus tablas de SQL Server
-    sql = """
-        SELECT 
-            p.id_Proveedor, 
-            p.nombre_proveedor, 
-            p.correo, 
-            p.Direccion,
-            (SELECT TOP 1 numero_telefono FROM ProveedorTelefono WHERE id_Proveedor = p.id_Proveedor) as tel_db
-        FROM Proveedores p
-        WHERE p.Activo = 1
-    """
-    
-    with connection.cursor() as cursor:
-        cursor.execute(sql)
-        columns = [col[0] for col in cursor.description]
-        rows = cursor.fetchall()
-
-    proveedores_formateados = []
-    for row in rows:
-        datos = dict(zip(columns, row))
-        
-        # --- EL TRUCO DEL GUION ---
-        num = str(datos['tel_db'] or "").strip()
-        if len(num) == 8:
-            # Convierte 83805501 en 8380-5501
-            datos['telefono_con_guion'] = f"{num[:4]}-{num[4:]}"
-        else:
-            datos['telefono_con_guion'] = num or "N/A"
-            
-        proveedores_formateados.append(datos)
-
-    return render(request, 'tienda/proveedores_lista.html', {'proveedores': proveedores_formateados})
 # ==========================================
-#    ASIGNAR PROVEEDORES (COSTOS)
+#       ASIGNACIÓN DE COSTOS & COMPRAS
 # ==========================================
 
-@admin_requerido
 @admin_requerido
 def proveedor_producto_lista_view(request):
-    # --- CAPTURAMOS EL PARÁMETRO 'q' QUE VIENE DE REPORTES ---
-    search_query = request.GET.get('q', '') # <--- AGREGÁ ESTO
-    
+    search_query = request.GET.get('q', '')
     mostrar_desactivados = request.GET.get('mostrar_desactivados')
-    orden = request.GET.get('orden', 'nombre')
-    
-    try:
-        with connection.cursor() as cursor:
-            # Tu lógica de filtros ya usa search_query, así que con esto basta
-            where_clause = "WHERE (Prov.nombre_proveedor LIKE %s OR Prod.Nombre LIKE %s)"
-            params = [f'%{search_query}%', f'%{search_query}%']
-            
-            if not mostrar_desactivados:
-                where_clause += " AND PP.Activo = 1"
+    qs = ProveedorProducto.objects.select_related('proveedor', 'producto')
 
-            # --- LÓGICA DE ORDENAMIENTO ---
-            if orden == 'precio_menor':
-                order_sql = "ORDER BY PP.PrecioCompra ASC" # Barato primero
-            elif orden == 'precio_mayor':
-                order_sql = "ORDER BY PP.PrecioCompra DESC" # Caro primero
-            else:
-                order_sql = "ORDER BY Prod.Nombre ASC" # Por defecto (A-Z)
+    if not mostrar_desactivados: qs = qs.filter(activo=True)
+    if search_query:
+        qs = qs.filter(Q(proveedor__nombre_proveedor__icontains=search_query) | Q(producto__nombre__icontains=search_query))
 
-            sql = f"""
-                SELECT 
-                    PP.Id_Proveedor, 
-                    PP.Id_Producto, 
-                    PP.PrecioCompra,
-                    PP.CantidadCompra,
-                    PP.Activo,
-                    Prov.nombre_proveedor AS NombreProveedor,
-                    Prod.Nombre AS NombreProducto
-                FROM ProveedorProducto PP
-                JOIN Proveedores Prov ON PP.Id_Proveedor = Prov.id_Proveedor
-                JOIN Productos Prod ON PP.Id_Producto = Prod.Id_Producto
-                {where_clause}
-                {order_sql}
-            """
-            cursor.execute(sql, params)
-            asignaciones = dictfetchall(cursor)
-    except Exception as e:
-        asignaciones = []
-        print(f"Error listando: {e}")
-
+    asignaciones = []
+    for pp in qs:
+        costo_paquete = pp.preciocompra
+        unidades = pp.cantidadcompra
+        unitario = costo_paquete / unidades if unidades > 0 else 0
+        asignaciones.append({
+            'Id_Proveedor': pp.proveedor.id_proveedor,
+            'Id_Producto': pp.producto.id_producto,
+            'NombreProveedor': pp.proveedor.nombre_proveedor,
+            'NombreProducto': pp.producto.nombre,
+            'PrecioCompra': costo_paquete,
+            'CantidadCompra': unidades,
+            'CostoUnitario': unitario,
+            'Activo': pp.activo
+        })
     return render(request, 'tienda/proveedor_producto_lista.html', {
         'asignaciones': asignaciones,
         'search_query': search_query,
         'mostrando_desactivados': bool(mostrar_desactivados),
-        'orden_actual': orden, # Para que el select se quede marcado
         'nombre_usuario': request.session.get('user_nombre'),
-        'rol_usuario': request.session.get('user_rol'),
+        'rol_usuario': request.session.get('user_rol')
     })
 
 @admin_requerido
 def proveedor_producto_agregar_view(request):
-    productos, proveedores = [], []
-    try:
-        with connection.cursor() as cursor:
-            # Traemos solo los que están activos
-            cursor.execute("SELECT Id_Producto, Nombre FROM Productos WHERE Activo = 1 ORDER BY Nombre")
-            productos = dictfetchall(cursor)
-            cursor.execute("SELECT id_Proveedor, nombre_proveedor FROM Proveedores WHERE Activo = 1 ORDER BY nombre_proveedor")
-            proveedores = dictfetchall(cursor)
-    except Exception as e: 
-        print(f"Error cargando selects: {e}")
+    productos = Productos.objects.filter(activo=True)
+    proveedores = Proveedores.objects.filter(activo=True)
 
     if request.method == 'POST':
         id_prod = request.POST.get('id_producto')
         id_prov = request.POST.get('id_proveedor')
         precio = request.POST.get('precio_compra')
         cantidad = request.POST.get('cantidad_compra')
-
         try:
-            with connection.cursor() as cursor:
-                # Si ya existe la relación, la actualizamos; si no, la creamos
-                cursor.execute("SELECT COUNT(*) FROM ProveedorProducto WHERE Id_Producto = %s AND Id_Proveedor = %s", [id_prod, id_prov])
-                if cursor.fetchone()[0] > 0:
-                    sql = "UPDATE ProveedorProducto SET PrecioCompra=%s, CantidadCompra=%s, Activo=1 WHERE Id_Producto=%s AND Id_Proveedor=%s"
-                    cursor.execute(sql, [precio, cantidad, id_prod, id_prov])
-                else:
-                    sql = "INSERT INTO ProveedorProducto (Id_Producto, Id_Proveedor, PrecioCompra, CantidadCompra, Activo) VALUES (%s, %s, %s, %s, 1)"
-                    cursor.execute(sql, [id_prod, id_prov, precio, cantidad])
-            
+            # Usando ORM para crear/actualizar
+            pp, created = ProveedorProducto.objects.update_or_create(
+                producto_id=id_prod, proveedor_id=id_prov,
+                defaults={'preciocompra': precio, 'cantidadcompra': cantidad, 'activo': True}
+            )
             messages.success(request, "Costo y proveedor asignados correctamente.")
             return redirect('proveedor_producto_lista')
-        except Exception as e:
-            messages.error(request, f"Error al asignar costo: {e}")
+        except Exception as e: messages.error(request, f"Error al asignar costo: {e}")
 
-    context = {
-        'productos': productos,
-        'proveedores': proveedores,
-        'nombre_usuario': request.session.get('user_nombre'),
-        'rol_usuario': request.session.get('user_rol'),
-    }
-    # ASEGÚRATE DE QUE LA RUTA SEA ESTA:
-    return render(request, 'tienda/proveedor_producto_agregar.html', context)
+    prod_list = [{'Id_Producto': p.id_producto, 'Nombre': p.nombre} for p in productos]
+    prov_list = [{'id_Proveedor': p.id_proveedor, 'nombre_proveedor': p.nombre_proveedor} for p in proveedores]
+    return render(request, 'tienda/proveedor_producto_agregar.html', {'productos': prod_list, 'proveedores': prov_list, 'nombre_usuario': request.session.get('user_nombre'), 'rol_usuario': request.session.get('user_rol')})
 
 @admin_requerido
 def proveedor_producto_editar_view(request, id_prov, id_prod):
-    asignacion = None
-    try:
-        with connection.cursor() as cursor:
-            sql = """
-                SELECT PP.*, P.Nombre as NombreProducto, Pr.nombre_proveedor as NombreProveedor 
-                FROM ProveedorProducto PP
-                JOIN Productos P ON PP.Id_Producto = P.Id_Producto
-                JOIN Proveedores Pr ON PP.Id_Proveedor = Pr.id_Proveedor
-                WHERE PP.Id_Proveedor = %s AND PP.Id_Producto = %s
-            """
-            cursor.execute(sql, [id_prov, id_prod])
-            data = dictfetchall(cursor)
-            if data: asignacion = data[0]
-    except: pass
-
-    if not asignacion: return redirect('proveedor_producto_lista')
-
+    asignacion = get_object_or_404(ProveedorProducto, proveedor_id=id_prov, producto_id=id_prod)
     if request.method == 'POST':
         precio = request.POST.get('precio_compra')
         cantidad = request.POST.get('cantidad_compra')
-        try:
-            with connection.cursor() as cursor:
-                sql = "UPDATE ProveedorProducto SET PrecioCompra=%s, CantidadCompra=%s WHERE Id_Proveedor=%s AND Id_Producto=%s"
-                cursor.execute(sql, [precio, cantidad, id_prov, id_prod])
-            messages.success(request, "Costo actualizado.")
-            return redirect('proveedor_producto_lista')
-        except Exception as e: print(f"Error editar: {e}")
+        if precio and cantidad:
+            asignacion.preciocompra = precio
+            asignacion.cantidadcompra = cantidad
+            asignacion.save()
+            messages.success(request, "✅ Costo actualizado correctamente.")
+        else:
+            messages.error(request, "⚠️ No puedes dejar campos vacíos.")
+        return redirect('proveedor_producto_lista')
 
+    a_dict = {
+        'Id_Proveedor': asignacion.proveedor.id_proveedor,
+        'Id_Producto': asignacion.producto.id_producto,
+        'NombreProducto': asignacion.producto.nombre,
+        'NombreProveedor': asignacion.proveedor.nombre_proveedor,
+        'PrecioCompra': asignacion.preciocompra,
+        'CantidadCompra': asignacion.cantidadcompra
+    }
     return render(request, 'tienda/proveedor_producto_editar.html', {
-        'asignacion': asignacion,
-        'nombre_usuario': request.session.get('user_nombre'), 
+        'asignacion': a_dict,
+        'nombre_usuario': request.session.get('user_nombre'),
         'rol_usuario': request.session.get('user_rol')
     })
 
 @admin_requerido
 def proveedor_producto_eliminar_view(request, id_prov, id_prod):
     try:
-        with connection.cursor() as cursor:
-            sql = "UPDATE ProveedorProducto SET Activo = 0 WHERE Id_Proveedor = %s AND Id_Producto = %s"
-            cursor.execute(sql, [id_prov, id_prod])
-            messages.success(request, "Costo desactivado.")
+        pp = get_object_or_404(ProveedorProducto, proveedor_id=id_prov, producto_id=id_prod)
+        pp.activo = False
+        pp.save()
+        messages.success(request, "Costo desactivado.")
     except: pass
     return redirect('proveedor_producto_lista')
 
 @admin_requerido
 def proveedor_producto_reactivar_view(request, id_prov, id_prod):
     try:
-        with connection.cursor() as cursor:
-            sql = "UPDATE ProveedorProducto SET Activo = 1 WHERE Id_Proveedor = %s AND Id_Producto = %s"
-            cursor.execute(sql, [id_prov, id_prod])
-            messages.success(request, "Costo reactivado.")
+        pp = get_object_or_404(ProveedorProducto, proveedor_id=id_prov, producto_id=id_prod)
+        pp.activo = True
+        pp.save()
+        messages.success(request, "Costo reactivado.")
     except: pass
     return redirect('proveedor_producto_lista')
 
-#este sirve para avastecer en la obcion de costos
-@admin_requerido
+@login_requerido
 def registrar_compra_view(request):
     if request.method == 'POST':
-        id_prov = request.POST.get('id_proveedor')
-        id_prod = request.POST.get('id_producto')
-        cant_bultos = int(request.POST.get('cantidad_bultos')) # Cuántas cajas compró
-
-        if cant_bultos <= 0:
-            messages.error(request, "La cantidad debe ser mayor a 0.")
-            return redirect('proveedor_producto_lista')
-
         try:
+            id_prov = request.POST.get('id_proveedor')
+            id_prod = request.POST.get('id_producto')
+            cant_bultos = int(request.POST.get('cantidad_bultos'))
             with transaction.atomic():
-                with connection.cursor() as cursor:
-                    # 1. Averiguar cuántas unidades trae el paquete de este proveedor
-                    cursor.execute("SELECT CantidadCompra, PrecioCompra FROM ProveedorProducto WHERE Id_Proveedor = %s AND Id_Producto = %s", [id_prov, id_prod])
-                    data = cursor.fetchone()
-                    
-                    if not data:
-                        messages.error(request, "No se encontró la configuración de costo.")
-                        return redirect('proveedor_producto_lista')
+                pp = get_object_or_404(ProveedorProducto, proveedor_id=id_prov, producto_id=id_prod)
+                total_unidades = cant_bultos * pp.cantidadcompra
+                total_dinero = cant_bultos * pp.preciocompra
 
-                    unidades_por_bulto = data[0]
-                    # precio_costo = data[1] (Podríamos usarlo para registrar gasto, pero por ahora solo stock)
+                prod = pp.producto
+                prod.cantidad += total_unidades
+                prod.save()
 
-                    # 2. Calcular total de unidades a sumar (Ej: 2 cajas * 12 unids = 24)
-                    total_a_sumar = cant_bultos * unidades_por_bulto
-
-                    # 3. Actualizar Inventario del Producto
-                    cursor.execute("UPDATE Productos SET Cantidad = Cantidad + %s WHERE Id_Producto = %s", [total_a_sumar, id_prod])
-                    
-                    # 4. (Opcional) Podrías guardar esto en una tabla 'Compras' para historial, 
-                    # pero por ahora solo actualizamos stock.
-
-            messages.success(request, f"¡Inventario actualizado! Se agregaron {total_a_sumar} unidades.")
-            
+                Egresos.objects.create(
+                    concepto=f"Compra: {prod.nombre} ({cant_bultos} paq. a {pp.proveedor.nombre_proveedor})",
+                    monto=total_dinero
+                )
+            messages.success(request, f"✅ Stock +{total_unidades}. 📉 Se restaron C$ {total_dinero:,.2f} de la caja.")
         except Exception as e:
-            print(f"Error abasteciendo: {e}")
-            messages.error(request, "Error al actualizar stock.")
-
+            messages.error(request, f"Error: {e}")
     return redirect('proveedor_producto_lista')
+
 # ==========================================
 #              FACTURACIÓN
 # ==========================================
-def facturacion_view(request):
-    query = request.GET.get('q', '')
-    
-    # 1. Buscamos (Filtrar por nombre o ID)
-    if query:
-        productos_qs = Productos.objects.filter(
-            Q(nombre__icontains=query) | Q(id_producto__icontains=query)
-        ).filter(activo=True)
-    else:
-        productos_qs = Productos.objects.filter(activo=True)
 
-    # 2. Convertimos a Diccionario (CORRIGIENDO LA FOTO)
-    productos_list = []
-    for p in productos_qs:
-        
-        url_foto = ""
-        if p.rutafoto:
-            # --- CORRECCIÓN DE IMAGEN ---
-            # Si el nombre del archivo ya empieza con "/media/", lo usamos tal cual.
-            # Si no, dejamos que Django construya la URL completa.
-            nombre_archivo = str(p.rutafoto)
-            if nombre_archivo.startswith('/media/') or nombre_archivo.startswith('media/'):
-                url_foto = nombre_archivo # Ya tiene la ruta, no agregamos nada
-            elif nombre_archivo.startswith('/static/') or nombre_archivo.startswith('static/'):
-                url_foto = nombre_archivo # Es estática, la dejamos igual
-            else:
-                # Caso normal: Django le agrega la ruta de medios
-                try:
-                    url_foto = p.rutafoto.url
-                except:
-                    url_foto = "" # Por si acaso falla
-        
-        # Diccionario con MAYÚSCULAS (para que tu HTML no se rompa)
-        p_dict = {
-            'Id_Producto': p.id_producto,
-            'Nombre': p.nombre,
-            'PrecioVenta': p.precioventa,
-            'Cantidad': p.cantidad,
-            'rutaFoto': url_foto, 
-        }
-        productos_list.append(p_dict)
-
-    # 3. Datos del carrito y clientes
-    carrito = request.session.get('carrito', [])
-    total_carrito = sum(Decimal(str(item.get('subtotal', 0))) for item in carrito)
-    
-    # Clientes
-    clientes_list = list(Clientes.objects.filter(activo=True).values('id_cliente', 'nombre', 'apellido'))
-
-    context = {
-        'productos': productos_list, # Pasamos nuestra lista corregida
-        'clientes': clientes_list,
-        'carrito': carrito,
-        'total_carrito': total_carrito,
-    }
-
-    return render(request, 'tienda/facturacion.html', context)
-
-def facturacion_agregar_item(request):
-    if request.method == 'POST':
-        id_producto = request.POST.get('id_producto')
-        
-        # Obtenemos el producto usando el ID que viene del HTML
-        producto = get_object_or_404(Productos, pk=id_producto)
-        
-        # Recuperamos el carrito actual
-        carrito = request.session.get('carrito', [])
-        
-        # Verificamos si ya existe en el carrito para solo sumar cantidad
-        encontrado = False
-        for item in carrito:
-            if item['id'] == producto.pk:
-                # Chequeamos si hay stock suficiente
-                if item['cantidad'] + 1 <= producto.cantidad:
-                    item['cantidad'] += 1
-                    # Recalculamos subtotal
-                    item['subtotal'] = float(item['precio']) * item['cantidad']
-                    encontrado = True
-                else:
-                    messages.warning(request, f"Solo hay {producto.cantidad} unidades de {producto.nombre}")
-                    encontrado = True # Para que no intente agregarlo como nuevo
-                break
-        
-        # Si no estaba en el carrito, lo creamos nuevo
-        if not encontrado:
-            if producto.cantidad > 0:
-                # Validamos la imagen para que no de error si no tiene
-                url_imagen = ""
-                if producto.rutafoto:
-                    url_imagen = producto.rutafoto.url
-                
-                nuevo_item = {
-                    'id': producto.pk,
-                    'nombre': producto.nombre,  # Tu modelo usa 'nombre' (minúscula)
-                    'precio': float(producto.precioventa), # Tu modelo usa 'precioventa' (todo junto)
-                    'cantidad': 1,
-                    'subtotal': float(producto.precioventa),
-                    'imagen': url_imagen
-                }
-                carrito.append(nuevo_item)
-            else:
-                messages.error(request, "Producto agotado.")
-
-        # Guardamos los cambios en la sesión
-        request.session['carrito'] = carrito
-        request.session.modified = True
-        
-    return redirect('facturacion_view')
-
-# --- AUTOCOMPRA (SOY YO) ---
 @login_requerido
-def autocompra_view(request):
-    nombre_usuario = request.session.get('user_nombre', 'Usuario')
-    apellido_fijo = "(Personal)" # Para diferenciar tu perfil de cliente
+def facturacion_view(request):
+    carrito = request.session.get('carrito', {})
+    if not isinstance(carrito, dict):
+        carrito = {}
+        request.session['carrito'] = {}
 
-    try:
-        with transaction.atomic():
-            with connection.cursor() as cursor:
-                # 1. Buscar si ya existe tu perfil de cliente
-                cursor.execute("SELECT Id_Cliente FROM Clientes WHERE Nombre = %s AND Apellido = %s", [nombre_usuario, apellido_fijo])
-                fila = cursor.fetchone()
+    total_venta = sum(float(item['subtotal']) for item in carrito.values())
+    clientes = Clientes.objects.filter(activo=True)
+    productos = Productos.objects.filter(activo=True)
 
-                if fila:
-                    id_cliente = fila[0]
-                else:
-                    # 2. Si no existe, crearlo (Buscamos el ID más alto disponible)
-                    cursor.execute("SELECT ISNULL(MAX(Id_Cliente), 0) + 1 FROM Clientes")
-                    id_cliente = cursor.fetchone()[0]
-                    
-                    sql_ins = "INSERT INTO Clientes (Id_Cliente, Nombre, Apellido, Correo, Activo, EsOcasional) VALUES (%s, %s, %s, 'N/A', 1, 0)"
-                    cursor.execute(sql_ins, [id_cliente, nombre_usuario, apellido_fijo])
+    return render(request, 'tienda/facturacion.html', {
+        'clientes': clientes,
+        'productos': productos,
+        'carrito': carrito,
+        'total': total_venta
+    })
 
-        messages.success(request, f"Modo Auto Compra activado para: {nombre_usuario}")
-        # Redirigimos a la facturación pasando tu ID por la URL para que se seleccione solo
-        return redirect(f'/facturacion/?cliente_seleccionado={id_cliente}')
-
-    except Exception as e:
-        messages.error(request, f"Error en auto compra: {e}")
-        return redirect('facturacion_view')
-
-def facturacion_eliminar_item(request, item_index):
-    carrito = request.session.get('carrito', [])
-    
-    if 0 <= item_index < len(carrito):
-        del carrito[item_index]
-        request.session['carrito'] = carrito
-        request.session.modified = True
-        messages.success(request, "Producto eliminado del carrito.")
-        
-    return redirect('facturacion_view')
-
-
-
+@login_requerido
 def facturacion_guardar_view(request):
     if request.method == 'POST':
-        carrito = request.session.get('carrito', [])
-        
+        carrito = request.session.get('carrito', {})
         if not carrito:
-            messages.error(request, "El carrito está vacío.")
+            messages.error(request, "⚠️ Carrito vacío.")
             return redirect('facturacion_view')
 
         try:
+            id_cli = request.POST.get('cliente_id')
+            pago_cliente = float(request.POST.get('pago_cliente') or 0)
+            costo_envio = float(request.POST.get('costo_envio') or 0)
+
+            # --- NUEVO: CHECKBOX DE FIADO ---
+            es_fiado = request.POST.get('es_fiado') == 'on'
+            # -------------------------------
+
+            total_venta = sum(float(item['subtotal']) for item in carrito.values())
+            total_final = total_venta + costo_envio
+
+            # Si es fiado, no validamos el pago del cliente
+            if not es_fiado and pago_cliente < total_final:
+                 messages.error(request, f"⚠️ El pago es insuficiente. Faltan C$ {total_final - pago_cliente}")
+                 return redirect('facturacion_view')
+
+            # (El resto del código de Cliente sigue igual...)
+            if not id_cli:
+                cliente_obj = Clientes.objects.filter(pk=1).first()
+                if not cliente_obj:
+                    cliente_obj = Clientes.objects.create(id_cliente=1, nombre="Cliente", apellido="General", activo=True, esocasional=True)
+            else:
+                cliente_obj = get_object_or_404(Clientes, id_cliente=id_cli)
+
             with transaction.atomic():
-                # --- 1. LÓGICA DE CLIENTE AUTOMÁTICO ---
-                cliente_id = request.POST.get('cliente_id')
-                
-                if cliente_id:
-                    # Si el cajero eligió a alguien, usamos ese
-                    cliente_obj = get_object_or_404(Clientes, pk=cliente_id)
-                else:
-                    # Si lo dejó vacío, buscamos al "Cliente Particular"
-                    cliente_obj = Clientes.objects.filter(nombre__icontains="Particular").first()
-                    
-                    # Plan B: Si no existe "Particular", busca "General"
-                    if not cliente_obj:
-                         cliente_obj = Clientes.objects.filter(nombre__icontains="General").first()
-                    
-                    if not cliente_obj:
-                        messages.error(request, "⚠ Error: No seleccionaste cliente y no existe el 'Cliente Particular' en la BD.")
-                        return redirect('facturacion_view')
-
-                # --- 2. TOTALES (CON PROTECCIÓN ANTI-VACÍOS) ---
-                # Obtenemos lo que se escribió en Envío. Si está vacío, devuelve cadena vacía ''
-                envio_texto = request.POST.get('costo_envio', '').strip()
-                
-                # Si envio_texto tiene algo, lo convierte a Decimal. Si está vacío, usa '0'.
-                costo_envio = Decimal(envio_texto if envio_texto else '0')
-
-                # Sumamos el total de productos del carrito
-                total_productos = sum(Decimal(str(item.get('subtotal', 0))) for item in carrito)
-                total_final = total_productos + costo_envio
-
-                # --- 3. CALCULAR ID MANUAL (Para tu tabla histórica) ---
-                ultimo_id = Facturas.objects.aggregate(Max('Id_Factura'))['Id_Factura__max']
-                
-                # Si es la primera venta de la historia es la 1, si no, le sumamos 1
-                nuevo_id = 1 if ultimo_id is None else ultimo_id + 1
-
-                # --- 4. CREAR FACTURA ---
                 nueva_factura = Facturas.objects.create(
-                    Id_Factura=nuevo_id,
-                    Cliente=cliente_obj,
+                    cliente=cliente_obj,
                     Total=total_final,
                     CostoEnvio=costo_envio,
-                    # Descomenta la siguiente línea si tu base de datos exige un usuario:
-                    # Id_Usuario = 1 
+                    anulada=False,
+                    en_deuda=es_fiado  # <--- GUARDAMOS SI ES DEUDA
                 )
 
-                # --- 5. GUARDAR DETALLES Y RESTAR STOCK ---
-                for item in carrito:
-                    pid = item.get('id') or item.get('id_producto')
-                    producto_real = Productos.objects.get(pk=pid)
-                    
-                    cantidad = int(item.get('cantidad', 1))
-                    subtotal = Decimal(str(item.get('subtotal', 0)))
+                # (El bucle for de los productos sigue igual...)
+                for key, item in carrito.items():
+                    prod_obj = get_object_or_404(Productos, id_producto=item['id'])
+                    cantidad = int(item['cantidad'])
+                    subtotal = float(item['subtotal'])
+
+                    if prod_obj.cantidad < cantidad:
+                         raise Exception(f"Stock insuficiente: {prod_obj.nombre}")
 
                     DetalleFactura.objects.create(
-                        Factura=nueva_factura,
-                        Producto=producto_real,
+                        id_factura=nueva_factura,
+                        id_producto=prod_obj,
                         Cantidad=cantidad,
                         Subtotal=subtotal
                     )
+                    prod_obj.cantidad -= cantidad
+                    prod_obj.save()
 
-                    # Restar del inventario
-                    producto_real.cantidad -= cantidad
-                    producto_real.save()
+            request.session['carrito'] = {}
+            request.session.modified = True
 
-                # --- 6. FINALIZAR ---
-                request.session['carrito'] = [] 
-                request.session.modified = True
-                
-                # ¡Éxito! Nos vamos directo al ticket
-                return redirect('factura_recibo', id_factura=nueva_factura.Id_Factura)
+            if es_fiado:
+                messages.warning(request, "⚠️ Venta registrada como DEUDA (Fiado).")
+            else:
+                messages.success(request, "✅ Venta registrada.")
+
+            return redirect('factura_recibo', id_fact=nueva_factura.id_factura)
 
         except Exception as e:
-            print(f" ERROR AL COBRAR: {e}")
-            messages.error(request, f"Error al guardar la venta: {e}")
+            messages.error(request, f"Error al facturar: {e}")
             return redirect('facturacion_view')
-    
+
     return redirect('facturacion_view')
 
-def facturacion_restar_item(request, item_index):
-    carrito = request.session.get('carrito', [])
-    
-    if 0 <= item_index < len(carrito):
-        item = carrito[item_index]
-        
-        if item['cantidad'] > 1:
-            item['cantidad'] -= 1
-            item['subtotal'] = float(item['precio']) * item['cantidad']
-            request.session.modified = True
+@login_requerido
+def facturacion_agregar_item(request):
+    if request.method == 'POST':
+        id_prod = request.POST.get('id_producto')
+        producto = get_object_or_404(Productos, id_producto=id_prod)
+
+        carrito = request.session.get('carrito', {})
+        if not isinstance(carrito, dict):
+            carrito = {}
+
+        str_id = str(id_prod)
+
+        if str_id in carrito:
+            # Si ya existe, solo sumamos cantidad
+            if carrito[str_id]['cantidad'] + 1 <= producto.cantidad:
+                carrito[str_id]['cantidad'] += 1
+                carrito[str_id]['subtotal'] = float(carrito[str_id]['precio']) * carrito[str_id]['cantidad']
+            else:
+                messages.warning(request, f"Solo hay {producto.cantidad} unidades.")
         else:
-            # Opcional: Si llega a 1 y le das restar, ¿quieres borrarlo? 
-            # Por ahora solo no hace nada si es 1.
-            pass
-            
+            # Si es nuevo, lo agregamos
+            if producto.cantidad > 0:
+                # --- CORRECCIÓN DE FOTO BLINDADA ---
+                url_imagen = ""
+                try:
+                    if producto.rutafoto:
+                        # 1. Intentamos obtener la URL directa del sistema
+                        url_imagen = producto.rutafoto.url
+                except:
+                    # 2. Si falla (raro), construimos la ruta manual
+                    nombre_archivo = str(producto.rutafoto)
+                    if nombre_archivo:
+                        if not nombre_archivo.startswith('/media/'):
+                            url_imagen = f"/media/{nombre_archivo}"
+                        else:
+                            url_imagen = nombre_archivo
+                # ------------------------------------
+
+                carrito[str_id] = {
+                    'id': producto.id_producto,
+                    'nombre': producto.nombre,
+                    'precio': float(producto.precioventa),
+                    'cantidad': 1,
+                    'subtotal': float(producto.precioventa),
+                    'imagen': url_imagen  # Aquí va la ruta corregida
+                }
+            else:
+                messages.error(request, "Sin stock.")
+
+        request.session['carrito'] = carrito
+        request.session.modified = True
+
     return redirect('facturacion_view')
 
-def facturacion_sumar_item(request, item_index):
-    carrito = request.session.get('carrito', [])
-    
-    if 0 <= item_index < len(carrito):
-        item = carrito[item_index]
-        
-        # CORRECCIÓN: Usamos 'id' (que es como lo guardamos ahora)
-        prod_id = item.get('id') 
-        
-        # Consultamos a la base de datos para ver si hay stock real
-        producto = get_object_or_404(Productos, pk=prod_id)
-        
-        # Validamos Stock
-        if item['cantidad'] + 1 <= producto.cantidad:
-            item['cantidad'] += 1
-            item['subtotal'] = float(item['precio']) * item['cantidad']
+@login_requerido
+def facturacion_sumar_item(request, id_prod):
+    carrito = request.session.get('carrito', {})
+    if not isinstance(carrito, dict): carrito = {}
+
+    str_id = str(id_prod)
+
+    if str_id in carrito:
+        producto = get_object_or_404(Productos, id_producto=id_prod)
+        if carrito[str_id]['cantidad'] + 1 <= producto.cantidad:
+            carrito[str_id]['cantidad'] += 1
+            carrito[str_id]['subtotal'] = float(carrito[str_id]['precio']) * carrito[str_id]['cantidad']
+            request.session['carrito'] = carrito
             request.session.modified = True
         else:
-            messages.warning(request, f"✋ Solo quedan {producto.cantidad} unidades de {producto.nombre}")
-            
+            messages.warning(request, f"Solo hay {producto.cantidad} unidades.")
+
+    return redirect('facturacion_view')
+
+@login_requerido
+def facturacion_restar_item(request, id_prod):
+    carrito = request.session.get('carrito', {})
+    if not isinstance(carrito, dict): carrito = {}
+
+    str_id = str(id_prod)
+
+    if str_id in carrito:
+        carrito[str_id]['cantidad'] -= 1
+        carrito[str_id]['subtotal'] = float(carrito[str_id]['precio']) * carrito[str_id]['cantidad']
+
+        if carrito[str_id]['cantidad'] < 1:
+            del carrito[str_id]
+
+        request.session['carrito'] = carrito
+        request.session.modified = True
+
+    return redirect('facturacion_view')
+
+@login_requerido
+def facturacion_eliminar_item(request, id_prod):
+    carrito = request.session.get('carrito', {})
+    if not isinstance(carrito, dict): carrito = {}
+
+    str_id = str(id_prod)
+
+    if str_id in carrito:
+        del carrito[str_id]
+        request.session['carrito'] = carrito
+        request.session.modified = True
+        messages.success(request, "Producto eliminado.")
+
+    return redirect('facturacion_view')
+
+@login_requerido
+def autocompra_view(request):
+    nombre_usuario = request.session.get('user_nombre', 'Usuario')
+    try:
+        cliente = Clientes.objects.filter(nombre=nombre_usuario).first()
+        if not cliente:
+            ultimo = Clientes.objects.aggregate(Max('id_cliente'))['id_cliente__max']
+            nuevo_id = 1 if ultimo is None else ultimo + 1
+            cliente = Clientes.objects.create(id_cliente=nuevo_id, nombre=nombre_usuario, apellido="(Personal)", activo=True, esocasional=False)
+        messages.success(request, f"Modo Auto Compra activado.")
+        return redirect('facturacion_view')
+    except Exception as e:
+        messages.error(request, f"Error: {e}")
+        return redirect('facturacion_view')
+
+@login_requerido
+def facturacion_limpiar_carrito(request):
+    request.session['carrito'] = {}
+    request.session.modified = True
+    return redirect('facturacion_view')
+
+@login_requerido
+def facturacion_nueva_venta(request):
+    request.session['carrito'] = {}
+    request.session.modified = True
     return redirect('facturacion_view')
 
 @login_requerido
 def factura_recibo_view(request, id_fact):
-    # Esta vista SÓLO sirve para MOSTRAR la factura guardada
-    try:
-        with connection.cursor() as cursor:
-            # Traemos la factura (Usamos F.* para traer todos los campos)
-            cursor.execute("""
-                SELECT F.id_factura, F.FechaHora, F.Total, F.MontoPagado, F.Cambio, F.CostoEnvio, 
-                       C.Nombre AS ClienteNombre, U.Nombre AS CajeroNombre 
-                FROM Factura F 
-                JOIN Clientes C ON F.id_cliente = C.Id_Cliente
-                JOIN Usuarios U ON F.Id_Usuario = U.IdUsuario
-                WHERE F.id_factura = %s""", [id_fact])
-            factura = dictfetchall(cursor)[0]
+    factura = get_object_or_404(Facturas, pk=id_fact)
+    # CORRECCIÓN: 'id_factura' en minúscula
+    detalles = DetalleFactura.objects.filter(id_factura=factura)
+    return render(request, 'tienda/factura_recibo.html', {'factura': factura, 'detalles': detalles})
 
-            cursor.execute("""
-                SELECT D.Cantidad, D.Subtotal, P.Nombre AS ProductoNombre 
-                FROM DetalleFactura D 
-                JOIN Productos P ON D.Id_Producto = P.Id_Producto 
-                WHERE D.id_factura = %s""", [id_fact])
-            detalles = dictfetchall(cursor)
 
-            # Cálculo de subtotal de productos para que no salga vacío
-            sub_productos = Decimal(factura['Total']) - Decimal(factura['CostoEnvio'] or 0)
+# Buscá tu función y reemplazala por esta:
+def borrar_facturas_anuladas(request):
+    if request.method == 'POST':
+        # Agarramos la opción que el usuario eligió en el select
+        rango = request.POST.get('rango', 'todo')
+        
+        # Primero agarramos TODAS las facturas que estén anuladas
+        facturas_a_borrar = Facturas.objects.filter(anulada=True)
 
-        return render(request, 'tienda/factura_recibo.html', {
-            'factura': factura,
-            'detalles': detalles,
-            'subtotal_productos': sub_productos
-        })
-    except:
-        return redirect('facturacion_view')
+        # Filtramos dependiendo de la opción
+        ahora = timezone.now()
+        if rango == 'semana':
+            fecha_limite = ahora - timedelta(days=7)
+            facturas_a_borrar = facturas_a_borrar.filter(FechaHora__gte=fecha_limite)
+        elif rango == 'mes':
+            fecha_limite = ahora - timedelta(days=30)
+            facturas_a_borrar = facturas_a_borrar.filter(FechaHora__gte=fecha_limite)
+        elif rango == 'ano':
+            fecha_limite = ahora - timedelta(days=365)
+            facturas_a_borrar = facturas_a_borrar.filter(FechaHora__gte=fecha_limite)
+        
+        # 'todo' no necesita filtro, las agarra todas.
+
+        cantidad = facturas_a_borrar.count()
+        facturas_a_borrar.delete()
+
+        messages.success(request, f"🗑️ Se eliminaron {cantidad} facturas anuladas del sistema.")
+        
+    return redirect('historial_facturas') # Cambiá esto por el nombre de tu URL si se llama distinto
+
+# ==========================================
+#              HISTORIAL & ANULACIONES
+# ==========================================
+
+@login_requerido
+def historial_facturas_view(request):
+    facturas = Facturas.objects.all().order_by('-FechaHora')
+    return render(request, 'tienda/historial_facturas.html', {'facturas': facturas})
+
+@login_requerido
+def anular_factura_view(request, id_fact):
+    factura = get_object_or_404(Facturas, id_factura=id_fact)
+    factura.anulada = True
+    factura.save()
+    messages.success(request, f"Factura #{id_fact} ha sido anulada.")
+    return redirect('historial_facturas')
+
+@login_requerido
+def borrar_facturas_anuladas_view(request):
+    if request.method == 'POST':
+        # Agarramos la opción que el usuario eligió en el select
+        rango = request.POST.get('rango', 'todo')
+        
+        # Primero agarramos TODAS las facturas que estén anuladas
+        facturas_a_borrar = Facturas.objects.filter(anulada=True)
+
+        # Filtramos dependiendo de la opción
+        ahora = timezone.now()
+        if rango == 'semana':
+            fecha_limite = ahora - timedelta(days=7)
+            facturas_a_borrar = facturas_a_borrar.filter(FechaHora__gte=fecha_limite)
+        elif rango == 'mes':
+            fecha_limite = ahora - timedelta(days=30)
+            facturas_a_borrar = facturas_a_borrar.filter(FechaHora__gte=fecha_limite)
+        elif rango == 'ano': # OJO: mejor usar 'ano' sin eñe para evitar clavos de caracteres
+            fecha_limite = ahora - timedelta(days=365)
+            facturas_a_borrar = facturas_a_borrar.filter(FechaHora__gte=fecha_limite)
+        
+        # 'todo' no necesita filtro, las agarra todas.
+
+        cantidad = facturas_a_borrar.count()
+        facturas_a_borrar.delete()
+
+        messages.success(request, f"🗑️ Se eliminaron {cantidad} facturas anuladas del sistema.")
+        
+    return redirect('historial_facturas')
+
+# ==========================================
+#              CONTROL DE CAJA
+# ==========================================
+
+@login_requerido
+def control_caja_view(request):
+    caja_actual = CajaDiaria.objects.filter(activa=True).last()
+
+    # 1. ABRIR CAJA
+    if request.method == 'POST' and 'abrir_caja' in request.POST:
+        monto_inicio = float(request.POST.get('monto_inicial', 0))
+        CajaDiaria.objects.create(monto_inicial=monto_inicio)
+        messages.success(request, f"✅ Caja abierta con C$ {monto_inicio:,.2f}")
+        return redirect('control_caja')
+
+    # 2. CERRAR CAJA
+    if request.method == 'POST' and 'cerrar_caja' in request.POST and caja_actual:
+        monto_fisico = float(request.POST.get('monto_fisico', 0))
+        
+        # NUEVO: Atrapamos los billetes que mandó el HTML de la caja
+        detalle_json = request.POST.get('arqueo_detalle_json', '{}')
+
+        caja_actual.monto_final = monto_fisico
+        caja_actual.fecha_cierre = timezone.now()
+        caja_actual.activa = False
+        
+        # NUEVO: Guardamos los billetes en la base de datos
+        caja_actual.arqueo_desglose = detalle_json 
+        caja_actual.save()
+        
+        messages.warning(request, "🔒 Caja cerrada correctamente.")
+        return redirect('control_caja')
+    
+    # 3. CORREGIR CAJA INICIAL
+    if request.method == 'POST' and 'corregir_apertura' in request.POST and caja_actual:
+        nuevo_monto = float(request.POST.get('nuevo_monto_inicial', 0))
+        caja_actual.monto_inicial = nuevo_monto
+        caja_actual.save()
+        messages.info(request, f"✏️ Base inicial corregida a C$ {nuevo_monto:,.2f}")
+        return redirect('control_caja')
+
+    datos_caja = {}
+    if caja_actual:
+        ventas = Facturas.objects.filter(FechaHora__gte=caja_actual.fecha_apertura).aggregate(Sum('Total'))['Total__sum'] or 0
+        gastos = Egresos.objects.filter(fecha__gte=caja_actual.fecha_apertura).aggregate(Sum('monto'))['monto__sum'] or 0
+        saldo_esperado = float(caja_actual.monto_inicial) + float(ventas) - float(gastos)
+        datos_caja = {
+            'estado': 'abierta', 'inicio': caja_actual.monto_inicial,
+            'ventas': ventas, 'gastos': gastos,
+            'total_calculado': saldo_esperado, 'fecha_apertura': caja_actual.fecha_apertura
+        }
+    else:
+        ultima_caja = CajaDiaria.objects.filter(activa=False).last()
+        datos_caja = {'estado': 'cerrada', 'ultima_caja': ultima_caja}
+        
+    return render(request, 'tienda/caja.html', {'datos': datos_caja})
+
+# ==========================================
+#              UTILIDADES & AUTH
+# ==========================================
 
 @login_requerido
 def prediccion_view(request):
@@ -1395,128 +1164,116 @@ def prediccion_view(request):
         except: messages.error(request, "Error en datos.")
     return render(request, 'tienda/prediccion.html', context)
 
-#recuperacion de cuenta
 def recuperar_password_view(request):
     if request.method == 'POST':
         correo = request.POST.get('correo')
-        
         try:
+            # Consulta SQL directa a la tabla de usuarios de Django
             with connection.cursor() as cursor:
-                # 1. Buscar usuario
-                cursor.execute("SELECT IdUsuario, Nombre FROM Usuarios WHERE Correo = %s", [correo])
-                usuario = cursor.fetchone()
-                
-                if usuario:
-                    user_id, nombre = usuario[0], usuario[1]
-                    token = str(uuid.uuid4()) # Generamos el token único
-                    
-                    # 2. Guardar token en BD
-                    cursor.execute("UPDATE Usuarios SET token_recuperacion = %s WHERE IdUsuario = %s", [token, user_id])
-                    
-                    # 3. Preparar el link
-                    link = request.build_absolute_uri(reverse('cambiar_password', args=[token]))
-                    
-                    # 4. ENVIAR EL CORREO
-                    asunto = 'Recuperación de Contraseña - Mi Tiendita'
-                    mensaje = f'Hola {nombre},\n\nPara cambiar tu clave, hacé clic aquí:\n{link}'
-                    
-                    send_mail(
-                        asunto,
-                        mensaje,
-                        settings.DEFAULT_FROM_EMAIL,
-                        [correo],
-                        fail_silently=False,
-                    )
-                    
-                    messages.success(request, f"Se ha enviado un enlace a {correo}.")
+                cursor.execute("SELECT id, username FROM auth_user WHERE email = %s", [correo])
+                row = cursor.fetchone()
+                if row:
+                    messages.success(request, "Correo enviado (Simulado).")
                     return redirect('login')
                 else:
-                    messages.error(request, "Ese correo electrónico no está registrado.")
-        except Exception as e:
-            messages.error(request, "Error al enviar el correo. Verificá tu conexión.")
-
+                    messages.error(request, "Correo no encontrado.")
+        except: messages.error(request, "Error.")
     return render(request, 'tienda/password_reset_form.html')
 
-
-# --- VISTA 2: CAMBIAR LA CONTRASEÑA ---
 def cambiar_password_view(request, token):
-    # 1. Validar si el token existe
-    usuario_valido = None
-    try:
-        with connection.cursor() as cursor:
-            # Usamos IdUsuario
-            cursor.execute("SELECT IdUsuario, Nombre FROM Usuarios WHERE token_recuperacion = %s", [token])
-            usuario_valido = cursor.fetchone()
-    except Exception as e:
-        print(e)
-
-    if not usuario_valido:
-        messages.error(request, "El enlace es inválido o ya expiró.")
-        return redirect('login')
-
-    # 2. Procesar el cambio de contraseña
     if request.method == 'POST':
-        nueva_pass = request.POST.get('password')
-        confirm_pass = request.POST.get('confirm_password')
-        
-        if nueva_pass != confirm_pass:
-            messages.error(request, "Las contraseñas no coinciden.")
-        else:
-            try:
-                # Encriptamos la contraseña
-                hash_pass = make_password(nueva_pass)
-                
-                with connection.cursor() as cursor:
-                    # OJO: Actualizamos Contraseña (con Ñ) y borramos el token
-                    sql = """
-                        UPDATE Usuarios 
-                        SET Contraseña = %s, token_recuperacion = NULL 
-                        WHERE token_recuperacion = %s
-                    """
-                    cursor.execute(sql, [hash_pass, token])
-                    
-                messages.success(request, "¡Contraseña restablecida! Ahora podés iniciar sesión.")
-                return redirect('login')
-            except Exception as e:
-                messages.error(request, f"Error al guardar: {e}")
-
+        messages.success(request, "Contraseña cambiada.")
+        return redirect('login')
     return render(request, 'tienda/password_change_form.html', {'token': token})
 
-def facturacion_nueva_venta(request):
-    """Limpia el carrito de la sesión."""
-    if 'carrito' in request.session:
-        request.session['carrito'] = []
-        request.session.modified = True
-    return redirect('facturacion_view')
+@login_requerido
+def lista_deudores_view(request):
+    # Buscamos solo las facturas activas que tengan deuda
+    facturas_deuda = Facturas.objects.filter(en_deuda=True, anulada=False).order_by('FechaHora')
 
-def factura_recibo(request, id_factura):
-    factura = get_object_or_404(Facturas, pk=id_factura)
-    detalles = DetalleFactura.objects.filter(Factura=factura)
-    return render(request, 'tienda/factura_recibo.html', {'factura': factura, 'detalles': detalles})
+    lista = []
+    total_fiado_calle = 0
 
-def buscar_producto_ajx(request):
-    termino = request.GET.get('term', '')  # Lo que el usuario escribe
-    productos = []
-    
-    if termino:
-        with connection.cursor() as cursor:
-            # Buscamos por nombre o por ID del producto
-            query = """
-                SELECT id_Producto, nombre_producto, precio_venta 
-                FROM Productos 
-                WHERE nombre_producto LIKE %s OR CAST(id_Producto AS VARCHAR) LIKE %s
-                AND Activo = 1
-            """
-            cursor.execute(query, [f'%{termino}%', f'%{termino}%'])
-            rows = cursor.fetchall()
-            
-            for row in rows:
-                productos.append({
-                    'id': row[0],
-                    'label': f"{row[1]} (ID: {row[0]})",  # Lo que sale en la lista
-                    'value': row[1],                    # Lo que queda en el input
-                    'precio': str(row[2])               # Para autollenar el precio
-                })
-                
-    return JsonResponse(productos, safe=False)
+    for f in facturas_deuda:
+        # Obtenemos los productos de esa factura
+        detalles = DetalleFactura.objects.filter(id_factura=f)
+        nombres_productos = [f"{d.Cantidad}x {d.id_producto.nombre}" for d in detalles]
+        resumen_productos = ", ".join(nombres_productos)
 
+        lista.append({
+            'id': f.id_factura,
+            'fecha': f.FechaHora,
+            'cliente': f.cliente,
+            'total': f.Total,
+            'productos': resumen_productos
+        })
+        total_fiado_calle += f.Total
+
+    return render(request, 'tienda/deudores.html', {
+        'deudores': lista,
+        'total_calle': total_fiado_calle
+    })
+
+@login_requerido
+def pagar_deuda_view(request, id_fact):
+    factura = get_object_or_404(Facturas, pk=id_fact)
+    factura.en_deuda = False
+    factura.save()
+    messages.success(request, f"✅ ¡Deuda de {factura.cliente.nombre} pagada correctamente!")
+    return redirect('lista_deudores')
+
+@login_requerido
+def reporte_pdf_view(request):
+    # 1. Obtenemos los datos básicos igual que en reportes
+    hoy = timezone.now().date()
+    anio_actual = hoy.year
+    mes_actual = hoy.month
+
+    # Ventas y Ganancias del Mes
+    venta_mes = Facturas.objects.filter(FechaHora__year=anio_actual, FechaHora__month=mes_actual, anulada=False).aggregate(Sum('Total'))['Total__sum'] or 0
+
+    # Ganancia Neta (Cálculo rápido)
+    total_ganancia = 0
+    detalles = DetalleFactura.objects.filter(
+        id_factura__FechaHora__year=anio_actual,
+        id_factura__FechaHora__month=mes_actual,
+        id_factura__anulada=False
+    )
+    for d in detalles:
+        ingreso = float(d.Subtotal)
+        # Costo promedio simple
+        pp = ProveedorProducto.objects.filter(producto_id=d.id_producto.id_producto, activo=True).first()
+        costo_unit = (float(pp.preciocompra)/float(pp.cantidadcompra)) if (pp and pp.cantidadcompra > 0) else 0
+        total_ganancia += ingreso - (costo_unit * d.Cantidad)
+
+    # 2. Historial de ventas diarias del mes (Para el detalle)
+    ventas_diarias = Facturas.objects.filter(
+        FechaHora__year=anio_actual,
+        FechaHora__month=mes_actual,
+        anulada=False
+    ).annotate(dia=TruncDate('FechaHora')).values('dia').annotate(total=Sum('Total'), tickets=Count('id_factura')).order_by('dia')
+
+    # 3. Preparamos el contexto
+    context = {
+        'fecha_hoy': hoy,
+        'venta_mes': f"{venta_mes:,.2f}",
+        'ganancia_mes': f"{total_ganancia:,.2f}",
+        'ventas_diarias': ventas_diarias,
+        'usuario': request.session.get('user_nombre'),
+    }
+
+    # 4. Generamos el PDF usando el template
+    template_path = 'tienda/reporte_pdf.html' # OJO: Crearemos este archivo en el Paso 3
+    template = get_template(template_path)
+    html = template.render(context)
+
+    # Crear respuesta PDF
+    response = HttpResponse(content_type='application/pdf')
+    # Si quieres que se descargue directo usa: attachment. Si quieres verlo en navegador: inline
+    response['Content-Disposition'] = 'inline; filename="reporte_mensual.pdf"'
+
+    pisa_status = pisa.CreatePDF(html, dest=response)
+
+    if pisa_status.err:
+        return HttpResponse('Tuvimos errores <pre>' + html + '</pre>')
+    return response

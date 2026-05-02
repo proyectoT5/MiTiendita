@@ -5,24 +5,24 @@
     
     <div class="d-flex justify-content-between align-items-center mb-3">
         <h1 class="h2"><i class="fas fa-tags text-secondary me-2"></i>Costos y Proveedores</h1>
-        <a href="{% url 'proveedor_producto_agregar' %}" class="btn btn-primary shadow-sm">
+        <a href="{% url 'proveedor_producto_agregar' %}" class="btn btn-primary shadow-sm fw-bold">
             <i class="fas fa-plus-circle"></i> Asignar Nuevo Costo
         </a>
     </div>
 
-    <div class="card shadow-sm mb-4 border-0 bg-light">
+    <div class="card shadow-sm mb-4 border-0 card-custom">
         <div class="card-body">
             <form method="GET" class="row g-3 align-items-center">
                 <div class="col-md-6">
-                    <div class="input-group bg-white rounded shadow-sm">
-                        <span class="input-group-text bg-white border-end-0"><i class="fas fa-search text-muted"></i></span>
-                        <input type="text" class="form-control border-start-0 ps-0" placeholder="Buscar producto (ej: Coca Cola)..." name="q" value="{{ search_query }}">
-                        <button class="btn btn-primary" type="submit">Buscar</button>
+                    <div class="input-group rounded shadow-sm border border-secondary">
+                        <span class="input-group-text bg-transparent border-0"><i class="fas fa-search text-muted"></i></span>
+                        <input type="text" class="form-control border-0 ps-0 bg-transparent" placeholder="Buscar producto o proveedor..." name="q" value="{{ search_query }}">
+                        <button class="btn btn-primary fw-bold rounded-end" type="submit">Buscar</button>
                     </div>
                 </div>
 
                 <div class="col-md-3">
-                    <select name="orden" class="form-select shadow-sm" onchange="this.form.submit()">
+                    <select name="orden" class="form-select shadow-sm border-secondary fw-bold" onchange="this.form.submit()">
                         <option value="nombre" {% if orden_actual == 'nombre' %}selected{% endif %}>Orden: A-Z</option>
                         <option value="precio_menor" {% if orden_actual == 'precio_menor' %}selected{% endif %}>Precio: Menor a Mayor</option>
                         <option value="precio_mayor" {% if orden_actual == 'precio_mayor' %}selected{% endif %}>Precio: Mayor a Menor</option>
@@ -30,37 +30,38 @@
                 </div>
 
                 <div class="col-md-3 text-end">
-                    <div class="form-check form-switch d-inline-block">
-                         <input class="form-check-input" type="checkbox" id="mostrar_desactivados" name="mostrar_desactivados" value="true" {% if mostrando_desactivados %}checked{% endif %} onchange="this.form.submit()"> 
-                         <label class="form-check-label small" for="mostrar_desactivados">Mostrar Inactivos</label>
+                    <div class="form-check form-switch d-inline-block p-2 border border-secondary rounded">
+                         <input class="form-check-input ms-0 mt-1" type="checkbox" id="mostrar_desactivados" name="mostrar_desactivados" value="true" {% if mostrando_desactivados %}checked{% endif %} onchange="this.form.submit()" style="cursor: pointer;"> 
+                         <label class="form-check-label small fw-bold ms-2" for="mostrar_desactivados" style="cursor: pointer;">Mostrar Inactivos</label>
                     </div>
                 </div>
             </form>
         </div>
     </div>
 
-    <div class="card shadow border-0">
+    <div class="card shadow border-0 card-custom">
         <div class="card-body p-0">
             <div class="table-responsive">
                 <table class="table table-hover align-middle mb-0">
-                    <thead class="bg-dark text-white">
+                    <thead class="border-bottom">
                         <tr>
                             <th class="ps-3 py-3">Producto</th>
                             <th>Proveedor</th>
                             <th class="text-center">Presentación</th>
-                            <th>Costo Unitario</th>
+                            <th class="text-end">Costo Paquete</th> 
+                            <th class="text-end text-warning">Costo Unitario</th> 
                             <th class="text-center">Estado</th>
-                            <th class="text-end pe-4">Acciones</th>
+                            <th class="text-center">Acciones</th>
                         </tr>
                     </thead>
                     <tbody>
                         {% for item in asignaciones %}
-                        <tr class="fila-costo {% if not item.Activo %}bg-light text-muted{% endif %}" 
+                        <tr class="fila-costo {% if not item.Activo %}opacity-50{% endif %}" 
                             data-prod-id="{{ item.Id_Producto }}" 
-                            data-price="{{ item.PrecioCompra }}">
+                            data-price="{{ item.CostoUnitario|stringformat:'.2f' }}"> 
                             
                             <td class="ps-3">
-                                <div class="fw-bold text-dark">{{ item.NombreProducto }}</div>
+                                <div class="fw-bold">{{ item.NombreProducto }}</div>
                                 <div class="badge-mejor-precio"></div>
                             </td>
                             
@@ -69,14 +70,18 @@
                             </td>
                             
                             <td class="text-center">
-                                <span class="badge bg-light text-dark border">
+                                <span class="badge bg-secondary bg-opacity-25 text-body border px-2 py-1">
                                     x {{ item.CantidadCompra }} Uds
                                 </span>
                             </td>
                             
-                            <td>
-                                <div class="d-flex align-items-center">
-                                    <span class="fw-bold fs-6 precio-display text-dark">C$ {{ item.PrecioCompra|floatformat:2 }}</span>
+                            <td class="text-end">
+                                <span class="text-secondary fw-bold">C$ {{ item.PrecioCompra|floatformat:2 }}</span>
+                            </td>
+
+                            <td class="text-end pe-3">
+                                <div class="d-flex align-items-center justify-content-end">
+                                    <span class="fw-bold fs-6 precio-display">C$ {{ item.CostoUnitario|floatformat:2 }}</span>
                                     <span class="ms-2 small text-danger icono-caro" style="display:none;" title="Más caro que otra opción">
                                         <i class="fas fa-arrow-up"></i>
                                     </span>
@@ -85,16 +90,16 @@
                             
                             <td class="text-center">
                                 {% if item.Activo %}
-                                    <span class="badge bg-success bg-opacity-10 text-success border border-success px-2 rounded-pill">Activo</span>
+                                    <span class="badge bg-success bg-opacity-25 text-success border border-success px-2 rounded-pill shadow-sm">Activo</span>
                                 {% else %}
-                                    <span class="badge bg-secondary rounded-pill">Inactivo</span>
+                                    <span class="badge bg-secondary bg-opacity-25 text-secondary border border-secondary rounded-pill shadow-sm">Inactivo</span>
                                 {% endif %}
                             </td>
                             
-                            <td class="text-end pe-3">
-                                <div class="btn-group">
+                            <td class="text-center">
+                                <div class="btn-group shadow-sm rounded">
                                     {% if item.Activo %}
-                                        <button type="button" class="btn btn-outline-success btn-sm" 
+                                        <button type="button" class="btn btn-outline-success btn-sm fw-bold border-0 border-end" 
                                                 data-bs-toggle="modal" data-bs-target="#modalComprar"
                                                 data-prov="{{ item.Id_Proveedor }}" 
                                                 data-prod="{{ item.Id_Producto }}"
@@ -106,19 +111,23 @@
                                     {% endif %}
 
                                     <a href="{% url 'proveedor_producto_editar' item.Id_Proveedor item.Id_Producto %}" 
-                                       class="btn btn-outline-primary btn-sm" title="Editar Costo">
+                                       class="btn btn-outline-primary btn-sm fw-bold border-0 border-end" title="Editar Costo">
                                         <i class="fas fa-edit"></i>
                                     </a>
 
                                     {% if item.Activo %}
-                                        <button type="button" class="btn btn-outline-danger btn-sm" 
+                                        <button type="button" class="btn btn-outline-danger btn-sm fw-bold border-0" 
                                                 title="Desactivar"
-                                                onclick="if(confirm('¿Dejar de comprarle a este proveedor?')) window.location.href='{% url 'proveedor_producto_eliminar' item.Id_Proveedor item.Id_Producto %}'">
+                                                data-bs-toggle="modal" 
+                                                data-bs-target="#modalDesactivarCosto"
+                                                data-prov="{{ item.Id_Proveedor }}"
+                                                data-prod="{{ item.Id_Producto }}"
+                                                data-provnombre="{{ item.NombreProveedor }}">
                                             <i class="fas fa-trash-alt"></i>
                                         </button>
                                     {% else %}
                                         <a href="{% url 'proveedor_producto_reactivar' item.Id_Proveedor item.Id_Producto %}" 
-                                           class="btn btn-outline-secondary btn-sm" title="Reactivar">
+                                           class="btn btn-outline-secondary btn-sm fw-bold border-0" title="Reactivar">
                                             <i class="fas fa-undo"></i>
                                         </a>
                                     {% endif %}
@@ -127,11 +136,11 @@
                         </tr>
                         {% empty %}
                         <tr>
-                            <td colspan="6" class="text-center py-5">
-                                <div class="text-muted">
+                            <td colspan="7" class="text-center py-5">
+                                <div class="text-muted opacity-50">
                                     <i class="fas fa-clipboard-list fa-3x mb-3"></i>
-                                    <p>No hay costos registrados aún.</p>
-                                    <a href="{% url 'proveedor_producto_agregar' %}" class="btn btn-sm btn-primary">Registrar Primero</a>
+                                    <p class="fw-bold">No hay costos registrados aún.</p>
+                                    <a href="{% url 'proveedor_producto_agregar' %}" class="btn btn-sm btn-primary fw-bold shadow-sm">Registrar Primero</a>
                                 </div>
                             </td>
                         </tr>
@@ -144,42 +153,42 @@
 
     <div class="modal fade" id="modalComprar" tabindex="-1">
         <div class="modal-dialog modal-dialog-centered">
-            <div class="modal-content border-0 shadow">
+            <div class="modal-content border-0 shadow card-custom">
                 <div class="modal-header bg-success text-white">
                     <h5 class="modal-title fw-bold"><i class="fas fa-dolly me-2"></i>Abastecer Inventario</h5>
                     <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
                 </div>
-                <div class="modal-body bg-light">
+                <div class="modal-body">
                     <form method="POST" action="{% url 'registrar_compra' %}">
                         {% csrf_token %}
                         <input type="hidden" name="id_proveedor" id="modalIdProv">
                         <input type="hidden" name="id_producto" id="modalIdProd">
                         
-                        <div class="card border-0 mb-3">
+                        <div class="card border-secondary bg-transparent mb-3 shadow-sm">
                             <div class="card-body text-center">
-                                <h5 class="text-primary mb-1" id="modalNombreProd">Producto</h5>
-                                <p class="text-muted small mb-0">Entrada de Mercadería</p>
+                                <h5 class="text-primary mb-1 fw-bold" id="modalNombreProd">Producto</h5>
+                                <p class="text-muted small mb-0 fw-bold">Entrada de Mercadería</p>
                             </div>
                         </div>
                         
-                        <div class="alert alert-warning d-flex align-items-center shadow-sm" role="alert">
-                            <i class="fas fa-info-circle fa-2x me-3"></i>
-                            <div>
-                                Este paquete contiene: <strong id="modalFactor" class="fs-5"></strong> unidades.
-                                <div class="small">El stock aumentará según esta cantidad.</div>
+                        <div class="alert alert-warning d-flex align-items-center shadow-sm border-0" role="alert" style="background-color: rgba(255, 193, 7, 0.1);">
+                            <i class="fas fa-info-circle fa-2x me-3 text-warning"></i>
+                            <div class="text-body">
+                                Este paquete contiene: <strong id="modalFactor" class="fs-5 text-warning"></strong> unidades.
+                                <div class="small opacity-75">El stock aumentará según esta cantidad.</div>
                             </div>
                         </div>
 
-                        <div class="mb-3">
-                            <label class="form-label fw-bold text-dark">¿Cuántos paquetes/cajas compraste?</label>
+                        <div class="mb-3 p-3 border border-secondary rounded shadow-sm">
+                            <label class="form-label fw-bold">¿Cuántos paquetes/cajas compraste?</label>
                             <div class="input-group">
-                                <button class="btn btn-outline-secondary" type="button" onclick="document.getElementById('inputCant').stepDown()"><i class="fas fa-minus"></i></button>
-                                <input type="number" id="inputCant" class="form-control form-control-lg text-center fw-bold text-success" name="cantidad_bultos" value="1" min="1" required>
-                                <button class="btn btn-outline-secondary" type="button" onclick="document.getElementById('inputCant').stepUp()"><i class="fas fa-plus"></i></button>
+                                <button class="btn btn-outline-secondary fw-bold fs-5" type="button" onclick="document.getElementById('inputCant').stepDown()"><i class="fas fa-minus"></i></button>
+                                <input type="number" id="inputCant" class="form-control form-control-lg text-center fw-bold text-success bg-transparent border-secondary" name="cantidad_bultos" value="1" min="1" required>
+                                <button class="btn btn-outline-secondary fw-bold fs-5" type="button" onclick="document.getElementById('inputCant').stepUp()"><i class="fas fa-plus"></i></button>
                             </div>
                         </div>
 
-                        <div class="d-grid">
+                        <div class="d-grid mt-4">
                             <button type="submit" class="btn btn-success btn-lg fw-bold shadow">
                                 <i class="fas fa-check-circle me-2"></i> Confirmar Ingreso
                             </button>
@@ -189,11 +198,43 @@
             </div>
         </div>
     </div>
+
+    <div class="modal fade" id="modalDesactivarCosto" tabindex="-1" aria-hidden="true">
+      <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content card-custom border-0 shadow-lg" style="border-radius: 15px;">
+          
+          <div class="modal-header bg-danger text-white border-0" style="border-radius: 15px 15px 0 0;">
+            <h5 class="modal-title fw-bold"><i class="fas fa-exclamation-triangle me-2"></i> Confirmar Acción</h5>
+            <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+          </div>
+          
+          <div class="modal-body p-4 text-center">
+            <i class="fas fa-truck-loading fa-3x text-danger mb-3 opacity-75"></i>
+            <h5 class="mb-3 fw-bold text-body">¿Dejar de comprarle a este proveedor?</h5>
+            
+            <div class="p-3 border border-danger rounded shadow-sm" style="background-color: rgba(220, 53, 69, 0.1);">
+                <p class="mb-0 text-muted">Proveedor: <strong class="text-danger fs-5" id="modalCostoProvNombre">Nombre</strong></p>
+            </div>
+            
+            <p class="small text-muted mt-3 mb-0 fst-italic">Este costo pasará a inactivo y ya no saldrá como opción principal.</p>
+          </div>
+          
+          <div class="modal-footer border-secondary bg-transparent border-top justify-content-center gap-2">
+            <button type="button" class="btn btn-secondary fw-bold px-4" data-bs-dismiss="modal" style="border-radius: 8px;">Cancelar</button>
+            <a href="#" id="btnConfirmarDesactivarCosto" class="btn btn-danger fw-bold px-4 shadow-sm" style="border-radius: 8px;">
+                Sí, desactivar
+            </a>
+          </div>
+          
+        </div>
+      </div>
+    </div>
+
 {% endblock %}
 
 {% block content_scripts %}
 <script>
-    // 1. Lógica del Modal
+    // 1. Lógica del Modal de Abastecer
     var modalComprar = document.getElementById('modalComprar');
     if (modalComprar) {
         modalComprar.addEventListener('show.bs.modal', function (event) {
@@ -202,18 +243,36 @@
             document.getElementById('modalIdProd').value = btn.getAttribute('data-prod');
             document.getElementById('modalNombreProd').innerText = btn.getAttribute('data-nombre');
             document.getElementById('modalFactor').innerText = btn.getAttribute('data-factor');
-            document.getElementById('inputCant').value = 1; // Resetear a 1
+            document.getElementById('inputCant').value = 1; 
         });
     }
 
-    // 2. Lógica de "Elegancia de Francia" (Detectar Mejor Precio)
+    // 2. Lógica del Modal para Desactivar Costo (NUEVO)
+    var modalDesactivarCosto = document.getElementById('modalDesactivarCosto');
+    if (modalDesactivarCosto) {
+        modalDesactivarCosto.addEventListener('show.bs.modal', function (event) {
+            var button = event.relatedTarget; 
+            
+            var idProv = button.getAttribute('data-prov');
+            var idProd = button.getAttribute('data-prod');
+            var provNombre = button.getAttribute('data-provnombre');
+            
+            document.getElementById('modalCostoProvNombre').innerText = provNombre;
+            
+            // Construimos la URL de eliminación reemplazando los IDs temporales (0)
+            var urlBase = "{% url 'proveedor_producto_eliminar' 0 0 %}";
+            var urlFinal = urlBase.replace('/0/0/', '/' + idProv + '/' + idProd + '/');
+            
+            document.getElementById('btnConfirmarDesactivarCosto').setAttribute('href', urlFinal);
+        });
+    }
+
+    // 3. Lógica de "Mejor Precio"
     document.addEventListener("DOMContentLoaded", function() {
         const products = {};
 
-        // Paso A: Agrupar productos y encontrar precios mínimos
         document.querySelectorAll('.fila-costo').forEach(row => {
             const id = row.getAttribute('data-prod-id');
-            // Reemplazamos coma por punto para decimales latinos si fuera necesario
             const price = parseFloat(row.getAttribute('data-price').replace(',', '.')); 
 
             if (!products[id]) {
@@ -226,9 +285,7 @@
             products[id].rows.push({ element: row, price: price });
         });
 
-        // Paso B: Pintar resultados
         for (const [id, data] of Object.entries(products)) {
-            // Solo si hay competencia (más de 1 proveedor para el mismo producto)
             const hayCompetencia = data.rows.length > 1;
 
             data.rows.forEach(item => {
@@ -238,13 +295,11 @@
 
                 if (hayCompetencia) {
                     if (item.price === data.min) {
-                        // ES EL BARATO 🏆
-                        badgeContainer.innerHTML = '<span class="badge bg-success text-white shadow-sm mt-1"><i class="fas fa-star me-1"></i>Mejor Precio</span>';
-                        item.element.classList.add('table-success'); // Fondo verdoso suave
+                        badgeContainer.innerHTML = '<span class="badge bg-success text-white shadow-sm mt-1"><i class="fas fa-star me-1"></i>Mejor Unitario</span>';
+                        item.element.style.backgroundColor = 'rgba(25, 135, 84, 0.1)'; 
                         priceText.classList.add('text-success');
                     } else {
-                        // ES EL CARO 💸
-                        iconCaro.style.display = 'inline'; // Mostrar flechita roja
+                        iconCaro.style.display = 'inline'; 
                         priceText.classList.remove('text-success');
                         priceText.classList.add('text-secondary');
                     }

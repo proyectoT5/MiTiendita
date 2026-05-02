@@ -1,148 +1,146 @@
-<!DOCTYPE html>
-<html lang="es">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Ticket #{{ factura.Id_Factura }}</title>
-    <style>
-        body {
-            background-color: #f0f0f0; /* Fondo gris para que resalte el ticket */
-            font-family: 'Courier New', Courier, monospace; /* Letra estilo Ticket */
-            display: flex;
-            justify-content: center;
-            padding-top: 30px;
-        }
+{% extends 'tienda/base.html' %}
+{% load static %}
 
+{% block content %}
+
+<style>
+    /* Estilo en Pantalla (Para que se vea centrado y bonito) */
+    .ticket-container {
+        max-width: 350px; /* Ancho típico de ticket */
+        margin: 0 auto;
+        background: #fff !important; /* Siempre blanco el papel */
+        color: #000 !important; /* MAGIA: Siempre tinta negra aunque el sistema esté oscuro */
+        padding: 20px;
+        box-shadow: 0 0 15px rgba(0,0,0,0.5); /* Sombra un poco más fuerte para que resalte en oscuro */
+        font-family: 'Courier New', Courier, monospace; /* Fuente retro */
+        border-radius: 4px; /* Un toquecito de suavidad en las esquinas */
+    }
+
+    /* Líneas separadoras */
+    .ticket-line {
+        border-bottom: 1px dashed #000 !important; /* Siempre negra la línea */
+        margin: 10px 0;
+    }
+
+    /* Asegurarnos que todo adentro del ticket herede el color negro */
+    .ticket-container * {
+        color: #000 !important;
+        border-color: #000 !important;
+    }
+
+    /* Ocultar cosas normales de la web cuando imprimimos */
+    @media print {
+        body * {
+            visibility: hidden;
+        }
+        .ticket-container, .ticket-container * {
+            visibility: visible;
+        }
         .ticket-container {
-            background-color: white;
-            width: 320px; /* Ancho ideal para ticket */
-            padding: 20px;
-            box-shadow: 0 0 10px rgba(0,0,0,0.2); /* Sombrita para que se vea bonito */
-            margin-bottom: 50px;
+            position: absolute;
+            left: 0;
+            top: 0;
+            width: 100%;
+            margin: 0;
+            padding: 0;
+            box-shadow: none;
+            border-radius: 0;
         }
+        /* Ocultar botones de acción al imprimir */
+        .no-print {
+            display: none !important;
+        }
+        /* Quitar encabezados y pies de página del navegador (Chrome/Edge) */
+        @page {
+            margin: 0;
+            size: auto;
+        }
+    }
+</style>
 
-        .text-center { text-align: center; }
-        .text-end { text-align: right; }
-        .fw-bold { font-weight: bold; }
+<div class="container mt-4 mb-5">
+
+    <div class="d-flex justify-content-center gap-3 mb-4 no-print">
+        {% if request.GET.src == 'historial' %}
+            <a href="{% url 'historial_facturas' %}" class="btn btn-secondary fw-bold shadow-sm" style="border-radius: 8px;">
+                <i class="fas fa-history me-1"></i> Regresar al Historial
+            </a>
+        {% else %}
+            <a href="{% url 'facturacion_view' %}" class="btn btn-primary fw-bold shadow-sm" style="border-radius: 8px;">
+                <i class="fas fa-cart-plus me-1"></i> Nueva Venta
+            </a>
+        {% endif %}
         
-        /* Líneas punteadas separadoras */
-        .dashed-line { 
-            border-top: 1px dashed #000; 
-            margin: 10px 0; 
-        }
+        <button onclick="window.print()" class="btn btn-success fw-bold shadow-sm" style="border-radius: 8px;">
+            <i class="fas fa-print me-1"></i> IMPRIMIR TICKET
+        </button>
+    </div>
 
-        table { width: 100%; font-size: 13px; margin-top: 10px; }
-        th { text-align: left; font-size: 12px; }
-        td { vertical-align: top; padding: 4px 0; }
+    <div class="ticket-container text-uppercase">
 
-        .btn-group {
-            margin-top: 20px;
-            text-align: center;
-        }
-
-        /* Estilos de botones */
-        .btn {
-            display: inline-block;
-            padding: 10px 20px;
-            margin: 5px;
-            text-decoration: none;
-            border-radius: 5px;
-            font-family: sans-serif; /* Botones con letra normal para leerse mejor */
-            font-size: 14px;
-            cursor: pointer;
-            border: none;
-        }
-
-        .btn-print { background-color: #333; color: white; }
-        .btn-back { color: #007bff; background: none; }
-        .btn-back:hover { text-decoration: underline; }
-
-        /* LO MÁS IMPORTANTE: Al imprimir, ocultar fondo y botones */
-        @media print {
-            body { background-color: white; padding: 0; display: block; }
-            .ticket-container { 
-                box-shadow: none; 
-                margin: 0; 
-                width: 100%; 
-                padding: 0; 
-            }
-            .no-print { display: none; }
-        }
-    </style>
-</head>
-<body>
-
-    <div class="ticket-container">
-        
-        <div class="text-center">
-            <h3 style="margin: 0;">MI TIENDITA</h3>
-            <p style="font-size: 12px; margin: 5px 0;">
-                RUC: 888-060399-1001B<br>
-                Managua, Nicaragua<br>
-                Tel:  8966-2852
-            </p>
+        <div class="text-center mb-3">
+            <h4 class="fw-bold mb-1">MI TIENDITA</h4>
+            <small>Managua, Nicaragua</small><br>
+            <small>Tel:  8966-2852</small><br>
+            <small>RUC: 888-030699-1001B</small>
         </div>
 
-        <div class="dashed-line"></div>
+        <div class="ticket-line"></div>
 
-        <div style="font-size: 12px;">
-            <strong>Factura N°:</strong> {{ factura.Id_Factura }}<br>
-            <strong>Fecha:</strong> {{ factura.Fecha|date:"d/m/Y H:i" }}<br>
-            <strong>Cliente:</strong> {{ factura.Cliente.nombre }} {{ factura.Cliente.apellido|default:"" }}
+        <div class="mb-2" style="font-size: 0.9rem;">
+            <strong>Ticket #:</strong> {{ factura.id_factura }}<br>
+            <strong>Fecha:</strong> {{ factura.FechaHora|date:"d/m/Y h:i A" }}<br>
+            <strong>Cajero:</strong> {{ request.session.user_nombre|default:"Admin" }}<br>
+            <strong>Cliente:</strong> {{ factura.cliente.nombre }} {{ factura.cliente.apellido|default:"" }}
         </div>
 
-        <div class="dashed-line"></div>
+        <div class="ticket-line"></div>
 
-        <table>
+        <table class="w-100" style="font-size: 0.85rem;">
             <thead>
-                <tr>
-                    <th style="width: 50%;">Desc</th>
-                    <th class="text-center">Cant</th>
+                <tr class="text-start">
+                    <th style="width: 15%;">Cant</th>
+                    <th style="width: 55%;">Desc</th>
                     <th class="text-end">Total</th>
                 </tr>
             </thead>
             <tbody>
                 {% for item in detalles %}
                 <tr>
-                    <td>{{ item.Producto.nombre }}</td>
-                    <td class="text-center">{{ item.Cantidad }}</td>
-                    <td class="text-end">{{ item.Subtotal }}</td>
+                    <td class="align-top text-center">{{ item.Cantidad }}</td>
+                    <td class="align-top">{{ item.id_producto.nombre }}</td>
+                    <td class="align-top text-end">{{ item.Subtotal|floatformat:2 }}</td>
                 </tr>
                 {% endfor %}
             </tbody>
         </table>
 
-        <div class="dashed-line"></div>
+        <div class="ticket-line"></div>
 
-        <div class="text-end fw-bold" style="font-size: 16px;">
-            TOTAL: C$ {{ factura.Total }}
+        <div class="d-flex justify-content-between fw-bold fs-5">
+            <span>TOTAL:</span>
+            <span>C$ {{ factura.Total|floatformat:2 }}</span>
         </div>
-        
-        {% if factura.CostoEnvio %}
-        <div class="text-end" style="font-size: 12px;">
-            (Incluye Envío: C$ {{ factura.CostoEnvio }})
+
+        {% if factura.en_deuda %}
+        <div class="text-center mt-2">
+            <span class="badge border border-dark text-dark rounded-0 px-3">*** CRÉDITO / FIADO ***</span>
+        </div>
+        {% else %}
+        <div class="text-center mt-2">
+            <span class="small fw-bold">-- PAGO DE CONTADO --</span>
         </div>
         {% endif %}
 
-        <div class="dashed-line"></div>
+        <div class="ticket-line"></div>
 
-        <div class="text-center" style="font-size: 12px; margin-top: 15px;">
-            ¡Gracias por su compra!<br>
-            Vuelva pronto
-        </div>
-
-        <div class="btn-group no-print">
-            <button onclick="window.print()" class="btn btn-print">🖨️ Imprimir</button>
+        <div class="text-center mt-3 mb-4">
+            <p class="mb-0 small fw-bold">¡Gracias por su compra!</p>
+            <p class="small mt-1">No se aceptan devoluciones<br>después de 24 horas.</p>
             <br>
-            <a href="{% url 'facturacion_view' %}" class="btn btn-back">⬅ Volver a Vender</a>
         </div>
 
     </div>
+</div>
 
-    <script>
-        // Opcional: Descomenta esto si quieres que imprima solo al abrir
-        // window.onload = function() { window.print(); }
-    </script>
-
-</body>
-</html>
+{% endblock %}

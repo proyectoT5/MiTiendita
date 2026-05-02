@@ -3,22 +3,54 @@
 
 {% block content %}
     <link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet" />
+    
+    <style>
+        /* --- MAGIA PARA QUE SELECT2 RESPETE EL MODO OSCURO --- */
+        [data-bs-theme="dark"] .select2-container--default .select2-selection--single {
+            background-color: #2b2b2b !important;
+            border-color: #555 !important;
+            height: calc(3.5rem + 2px); 
+        }
+        [data-bs-theme="dark"] .select2-container--default .select2-selection--single .select2-selection__rendered {
+            color: #fff !important;
+            line-height: 38px;
+        }
+        [data-bs-theme="dark"] .select2-container--default .select2-selection--single .select2-selection__arrow {
+            height: 38px;
+        }
+        [data-bs-theme="dark"] .select2-dropdown {
+            background-color: #2b2b2b !important;
+            border-color: #555 !important;
+        }
+        [data-bs-theme="dark"] .select2-container--default .select2-search--dropdown .select2-search__field {
+            background-color: #333 !important;
+            color: #fff !important;
+            border-color: #555 !important;
+        }
+        [data-bs-theme="dark"] .select2-container--default .select2-results__option {
+            color: #fff !important;
+        }
+        [data-bs-theme="dark"] .select2-container--default .select2-results__option[aria-selected=true] {
+            background-color: #444 !important;
+        }
+        [data-bs-theme="dark"] .select2-container--default .select2-results__option--highlighted[aria-selected] {
+            background-color: #0d6efd !important;
+            color: #fff !important;
+        }
+    </style>
 
-    <div class="d-flex justify-content-between align-items-center mb-4">
-        <h1 class="h2">Asignar Proveedor y Costo</h1>
-        <a href="{% url 'proveedor_producto_lista' %}" class="btn btn-secondary">
-            <i class="fas fa-arrow-left"></i> Volver a la lista
-        </a>
+    <div class="d-flex justify-content-between align-items-center mb-4 mt-2">
+        <h2 class="fw-bold"><i class="fas fa-link me-2 text-primary"></i> Asignar Proveedor y Costo</h2>
     </div>
 
-    <div class="card shadow-sm" style="max-width: 700px; margin: 0 auto;">
-        <div class="card-body">
+    <div class="card shadow-lg border-0 card-custom" style="max-width: 700px; margin: 0 auto; border-radius: 15px;">
+        <div class="card-body p-5">
             <form method="POST">
                 {% csrf_token %}
                 
                 <div class="mb-4">
                     <label class="form-label fw-bold">1. Seleccioná el Producto</label>
-                    <select class="form-select select2-busqueda" name="id_producto" required style="width: 100%;">
+                    <select class="form-select select2-busqueda shadow-sm" name="id_producto" required style="width: 100%;">
                         <option value="" selected disabled>-- Escribí para buscar producto --</option>
                         {% for p in productos %}
                             <option value="{{ p.Id_Producto }}">{{ p.Nombre }}</option>
@@ -28,7 +60,7 @@
 
                 <div class="mb-4">
                     <label class="form-label fw-bold">2. Seleccioná el Proveedor</label>
-                    <select class="form-select select2-busqueda" name="id_proveedor" required style="width: 100%;">
+                    <select class="form-select select2-busqueda shadow-sm" name="id_proveedor" required style="width: 100%;">
                         <option value="" selected disabled>-- Escribí para buscar proveedor --</option>
                         {% for prov in proveedores %}
                             <option value="{{ prov.id_Proveedor }}">{{ prov.nombre_proveedor }}</option>
@@ -39,21 +71,27 @@
                 <div class="row">
                     <div class="col-md-6 mb-3">
                         <label class="form-label fw-bold">3. Cantidad por Paquete</label>
-                        <input type="number" class="form-control" name="cantidad_compra" placeholder="Ej: 12 (Docena)" required>
-                        <div class="form-text">¿Cuántas unidades trae el bulto?</div>
+                        <input type="number" class="form-control form-control-lg bg-transparent border-secondary shadow-sm" name="cantidad_compra" placeholder="Ej: 12 (Docena)" required style="border-radius: 10px;">
+                        <div class="form-text opacity-75">¿Cuántas unidades trae el bulto?</div>
                     </div>
                     
                     <div class="col-md-6 mb-3">
                         <label class="form-label fw-bold">4. Costo de Compra (C$)</label>
-                        <div class="input-group">
-                            <span class="input-group-text">C$</span>
-                            <input type="number" step="0.01" class="form-control" name="precio_compra" placeholder="0.00" required>
+                        <div class="input-group input-group-lg shadow-sm" style="border-radius: 10px;">
+                            <span class="input-group-text border-secondary bg-transparent fw-bold text-success">C$</span>
+                            <input type="number" step="0.01" class="form-control bg-transparent border-secondary fw-bold" name="precio_compra" placeholder="0.00" required>
                         </div>
                     </div>
                 </div>
 
-                <div class="text-end mt-4">
-                    <button type="submit" class="btn btn-primary btn-lg px-5">Guardar Asignación</button>
+                <div class="d-flex justify-content-end mt-4 pt-3 border-top border-secondary gap-2">
+                    <a href="{% url 'proveedor_producto_lista' %}" class="btn btn-secondary btn-lg px-4" style="border-radius: 10px;">
+                        <i class="fas fa-times me-1"></i> Cancelar
+                    </a>
+                    
+                    <button type="submit" class="btn btn-primary btn-lg px-4 fw-bold shadow" style="border-radius: 10px;">
+                        <i class="fas fa-save me-1"></i> Guardar Asignación
+                    </button>
                 </div>
             </form>
         </div>
@@ -65,6 +103,7 @@
 <script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
 <script>
     $(document).ready(function() {
+        // Configuramos Select2 para que se aplique a los buscadores
         $('.select2-busqueda').select2({
             placeholder: "Buscar...",
             allowClear: true

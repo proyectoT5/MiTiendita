@@ -3,46 +3,80 @@
 
 {% block content %}
 <link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet" />
+<style>
+    /* --- MAGIA PARA QUE SELECT2 RESPETE EL MODO OSCURO --- */
+    [data-bs-theme="dark"] .select2-container--default .select2-selection--single {
+        background-color: #2b2b2b !important;
+        border-color: #555 !important;
+        height: calc(3.5rem + 2px); 
+    }
+    [data-bs-theme="dark"] .select2-container--default .select2-selection--single .select2-selection__rendered {
+        color: #fff !important;
+        line-height: 38px;
+    }
+    [data-bs-theme="dark"] .select2-container--default .select2-selection--single .select2-selection__arrow {
+        height: 38px;
+    }
+    [data-bs-theme="dark"] .select2-dropdown {
+        background-color: #2b2b2b !important;
+        border-color: #555 !important;
+    }
+    [data-bs-theme="dark"] .select2-container--default .select2-search--dropdown .select2-search__field {
+        background-color: #333 !important;
+        color: #fff !important;
+        border-color: #555 !important;
+    }
+    [data-bs-theme="dark"] .select2-container--default .select2-results__option {
+        color: #fff !important;
+    }
+    [data-bs-theme="dark"] .select2-container--default .select2-results__option[aria-selected=true] {
+        background-color: #444 !important;
+    }
+    [data-bs-theme="dark"] .select2-container--default .select2-results__option--highlighted[aria-selected] {
+        background-color: #0d6efd !important;
+        color: #fff !important;
+    }
+</style>
 
-<h1 class="h2 mb-4">Editar Producto: {{ producto.Nombre }}</h1>
+<h1 class="h2 mb-4 fw-bold">Editar Producto: {{ producto.Nombre }}</h1>
 
-<div class="card shadow-sm" style="max-width: 900px; margin: 0 auto;">
-    <div class="card-body">
+<div class="card shadow-sm border-0 card-custom" style="max-width: 900px; margin: 0 auto; border-radius: 15px;">
+    <div class="card-body p-5">
         <form method="POST" enctype="multipart/form-data">
             {% csrf_token %}
             <input type="hidden" name="rutaFotoActual" value="{{ producto.rutaFoto }}">
             
             <div class="row">
                 <div class="col-md-7">
-                    <h5 class="text-primary mb-3"><i class="fas fa-tag"></i> Datos de Venta</h5>
+                    <h5 class="text-primary fw-bold mb-3"><i class="fas fa-tag"></i> Datos de Venta</h5>
                     <div class="mb-3">
                         <label class="small fw-bold">Nombre del Producto</label>
-                        <input type="text" name="Nombre" class="form-control" value="{{ producto.Nombre }}" required>
+                        <input type="text" name="Nombre" class="form-control border-0 shadow-sm" value="{{ producto.Nombre }}" required style="border-radius: 8px;">
                     </div>
                     <div class="row">
                         <div class="col-6 mb-3">
                             <label class="small fw-bold">Precio Venta (C$)</label>
-                            <input type="number" step="0.01" name="PrecioVenta" class="form-control" value="{{ producto.PrecioVenta }}" required>
+                            <input type="number" step="0.01" name="PrecioVenta" class="form-control border-0 shadow-sm" value="{{ producto.PrecioVenta }}" required style="border-radius: 8px;">
                         </div>
                         <div class="col-6 mb-3">
                             <label class="small fw-bold">Stock Actual</label>
-                            <input type="number" name="Cantidad" class="form-control" value="{{ producto.Cantidad }}" required>
+                            <input type="number" name="Cantidad" class="form-control border-0 shadow-sm" value="{{ producto.Cantidad }}" required style="border-radius: 8px;">
                         </div>
                     </div>
                     <div class="mb-3">
                         <label class="small fw-bold">Foto</label>
                         <div class="mb-2">
-                            {% if producto.rutaFoto %}<img src="{{ producto.rutaFoto }}" alt="Foto" style="width: 80px; border-radius: 5px;">{% endif %}
+                            {% if producto.rutaFoto %}<img src="{{ producto.rutaFoto }}" alt="Foto" style="width: 80px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.2);">{% endif %}
                         </div>
-                        <input type="file" name="foto_del_producto" class="form-control" accept="image/*">
+                        <input type="file" name="foto_del_producto" class="form-control border-0 shadow-sm" accept="image/*" style="border-radius: 8px;">
                     </div>
                 </div>
 
                 <div class="col-md-5 border-start">
-                    <h5 class="text-success mb-3"><i class="fas fa-truck"></i> Datos de Compra</h5>
+                    <h5 class="text-success fw-bold mb-3"><i class="fas fa-truck"></i> Datos de Compra</h5>
                     <div class="mb-3">
                         <label class="small fw-bold">Proveedor</label>
-                        <select class="form-select" name="id_proveedor" id="select-proveedor" required>
+                        <select class="form-select border-0 shadow-sm" name="id_proveedor" id="select-proveedor" required>
                             <option value="">-- Buscar --</option>
                             {% for prov in proveedores %}
                                 <option value="{{ prov.id_Proveedor }}" {% if prov.id_Proveedor == producto.IdProveedor %}selected{% endif %}>{{ prov.nombre_proveedor }}</option>
@@ -51,22 +85,22 @@
                     </div>
                     <div class="mb-3">
                         <label class="small fw-bold">Unidades por Paquete</label>
-                        <input type="number" name="cantidad_compra" class="form-control" value="{{ producto.CantidadCompra|default:1 }}">
+                        <input type="number" name="cantidad_compra" class="form-control border-0 shadow-sm" value="{{ producto.CantidadCompra|default:1 }}" style="border-radius: 8px;">
                     </div>
                     <div class="mb-3">
                         <label class="small fw-bold">Costo de Compra (C$)</label>
-                        <input type="number" step="0.01" name="precio_compra" class="form-control" value="{{ producto.PrecioCompra|default:0.00 }}">
+                        <input type="number" step="0.01" name="precio_compra" class="form-control border-0 shadow-sm" value="{{ producto.PrecioCompra|default:0.00 }}" style="border-radius: 8px;">
                     </div>
                     <div class="mb-3">
                         <label class="small fw-bold">Stock Mínimo</label>
-                        <input type="number" name="StockMinimo" class="form-control" value="{{ producto.StockMinimo }}">
+                        <input type="number" name="StockMinimo" class="form-control border-0 shadow-sm" value="{{ producto.StockMinimo }}" style="border-radius: 8px;">
                     </div>
                 </div>
             </div>
 
-            <div class="text-end mt-4">
-                <a href="{% url 'productos_lista' %}" class="btn btn-secondary">Cancelar</a>
-                <button type="submit" class="btn btn-primary fw-bold px-4">Guardar Cambios</button>
+            <div class="text-end mt-4 pt-3 border-top">
+                <a href="{% url 'productos_lista' %}" class="btn btn-secondary px-4 me-2" style="border-radius: 8px;">Cancelar</a>
+                <button type="submit" class="btn btn-primary fw-bold px-4" style="border-radius: 8px;">Guardar Cambios</button>
             </div>
         </form>
     </div>

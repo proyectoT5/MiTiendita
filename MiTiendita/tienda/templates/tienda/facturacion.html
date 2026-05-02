@@ -11,133 +11,145 @@
     }
     input[type=number] { -moz-appearance: textfield; }
 
-    /* Tarjetas */
+    /* Tarjetas de productos */
     .producto-card {
-        transition: transform 0.2s, box-shadow 0.2s;
-        cursor: pointer; border: 1px solid #eee;
+        transition: transform 0.1s;
+        cursor: pointer; border: 1px solid #ddd;
     }
     .producto-card:hover {
-        transform: translateY(-3px);
-        box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+        transform: scale(1.02);
         border-color: #0d6efd;
+        box-shadow: 0 4px 8px rgba(0,0,0,0.1);
     }
+    
+    /* --- AJUSTES MODO OSCURO PARA PRODUCTOS --- */
+    [data-bs-theme="dark"] .producto-card {
+        background-color: #2b2b2b !important;
+        border-color: #444 !important;
+    }
+    /* Quitamos el fondo blanco estricto de las imágenes */
+    [data-bs-theme="dark"] .img-container {
+        background-color: transparent !important;
+    }
+    
+    /* --- PANEL DE CAJA MODO OSCURO --- */
+    [data-bs-theme="dark"] .caja-header { background-color: #0d6efd !important; color: white !important;}
+    [data-bs-theme="dark"] .caja-section { background-color: #1e1e1e !important; }
+    [data-bs-theme="dark"] .caja-footer { background-color: #2b2b2b !important; border-top: 1px solid #444 !important;}
+    
     .stock-badge {
-        position: absolute; top: 10px; right: 10px; font-size: 0.8rem; z-index: 10;
+        position: absolute; top: 5px; right: 5px; font-size: 0.8rem; z-index: 10;
     }
 </style>
 
 <div class="container-fluid mt-3">
+    
     <div class="row">
-        
         <div class="col-md-8">
-            <div class="card shadow-sm mb-3">
+            <div class="card shadow-sm mb-3 border-0 card-custom">
                 <div class="card-body p-2">
                     <form method="GET" action="{% url 'facturacion_view' %}" class="d-flex gap-2">
-                        <input type="text" name="q" class="form-control form-control-lg" placeholder="🔍 Buscar producto..." value="{{ request.GET.q|default:'' }}" autofocus>
-                        <button type="submit" class="btn btn-primary btn-lg">Buscar</button>
+                        <input type="text" name="q" class="form-control border-secondary shadow-sm" placeholder="🔍 Buscar producto..." value="{{ request.GET.q|default:'' }}" autofocus style="border-radius: 8px;">
+                        <button type="submit" class="btn btn-primary fw-bold" style="border-radius: 8px;">Buscar</button>
                         {% if request.GET.q %}
-                            <a href="{% url 'facturacion_view' %}" class="btn btn-outline-secondary btn-lg">Limpiar</a>
+                            <a href="{% url 'facturacion_view' %}" class="btn btn-outline-danger fw-bold" style="border-radius: 8px;">Limpiar</a>
                         {% endif %}
                     </form>
                 </div>
             </div>
 
-            <div class="row row-cols-1 row-cols-md-3 row-cols-lg-4 g-3" style="max-height: 80vh; overflow-y: auto; padding-bottom: 50px;">
+            <div class="row row-cols-2 row-cols-md-3 row-cols-lg-4 g-2" style="max-height: 75vh; overflow-y: auto; padding-bottom: 50px;">
                 {% for prod in productos %}
                 <div class="col">
                     <form action="{% url 'facturacion_agregar_item' %}" method="POST">
                         {% csrf_token %}
+                        <input type="hidden" name="id_producto" value="{{ prod.id_producto }}">
                         
-                        <input type="hidden" name="id_producto" value="{{ prod.Id_Producto }}">
-                        
-                        <div class="card h-100 producto-card position-relative" onclick="this.closest('form').submit();">
-                            
-                            <span class="badge bg-secondary stock-badge shadow-sm">
-                                Stock: {{ prod.Cantidad }}
-                            </span>
+                        <div class="card h-100 producto-card rounded-3 overflow-hidden" onclick="this.closest('form').submit();">
+                            <span class="badge bg-secondary stock-badge shadow-sm">Stock: {{ prod.cantidad }}</span>
 
-                            <div class="text-center p-3 bg-white" style="height: 160px; display: flex; align-items: center; justify-content: center; border-bottom: 1px solid #f0f0f0;">
-                                {% if prod.rutaFoto %}
-                                    <img src="{{ prod.rutaFoto }}" style="max-height: 100%; max-width: 100%; object-fit: contain;">
+                            <div class="text-center p-2 bg-white img-container" style="height: 140px; display: flex; align-items: center; justify-content: center;">
+                                {% if prod.rutafoto %}
+                                    <img src="{{ prod.rutafoto }}" style="max-height: 100%; max-width: 100%; object-fit: contain;">
                                 {% else %}
-                                    <div class="text-muted text-center">
-                                        <span style="font-size: 3rem;">📦</span><br>
-                                        <small>Sin imagen</small>
+                                    <div class="text-muted text-center opacity-50">
+                                        <span style="font-size: 2.5rem;">📦</span><br><small>Sin foto</small>
                                     </div>
                                 {% endif %}
                             </div>
 
-                            <div class="card-body p-2 text-center">
-                                <h6 class="card-title text-truncate fw-bold mb-1" style="font-size: 0.95rem;">
-                                    {{ prod.Nombre }}
-                                </h6>
-                                <h5 class="text-primary fw-bold mb-0">
-                                    C$ {{ prod.PrecioVenta }}
-                                </h5>
+                            <div class="card-body p-2 text-center border-top border-secondary opacity-75">
+                                <h6 class="card-title text-truncate fw-bold mb-1" style="font-size: 0.9rem;">{{ prod.nombre }}</h6>
+                                <h5 class="text-success fw-bold mb-0">C$ {{ prod.precioventa }}</h5>
                             </div>
                         </div>
                     </form>
                 </div>
                 {% empty %}
                 <div class="col-12 text-center py-5">
-                    <h3 class="text-muted">No se encontraron productos 😢</h3>
+                    <h4 class="text-muted opacity-50"><i class="fas fa-box-open mb-2 fs-1"></i><br>No se encontraron productos.</h4>
                 </div>
                 {% endfor %}
             </div>
         </div>
 
         <div class="col-md-4">
-            <div class="card shadow border-0 h-100">
-                <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center py-3">
-                    <h4 class="m-0 fw-bold"><i class="bi bi-cart4"></i> Caja</h4>
-                    <span class="badge bg-white text-primary rounded-pill">{{ request.session.carrito|length }} Ítems</span>
+            <div class="card shadow border-0 h-100 card-custom overflow-hidden rounded-3">
+                <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center py-3 caja-header border-0">
+                    <h5 class="m-0 fw-bold"><i class="fas fa-shopping-cart me-1"></i> Caja</h5>
+                    <span class="badge bg-light text-primary rounded-pill shadow-sm fs-6">{{ carrito|length }} Ítems</span>
                 </div>
                 
                 <div class="card-body d-flex flex-column p-0">
-                    <form action="{% url 'facturacion_guardar' %}" method="POST" id="form-cobrar" class="d-flex flex-column h-100">
+                    <form action="{% url 'facturacion_guardar_view' %}" method="POST" id="form-cobrar" class="d-flex flex-column h-100">
                         {% csrf_token %}
 
-                        <div class="p-3 border-bottom bg-light">
-                            <label class="fw-bold small text-muted mb-1">CLIENTE:</label>
-                            <select name="cliente_id" class="form-select border-primary">
-                                <option value="" selected>-- Cliente Particular (Público General) --</option>
+                        <div class="p-3 border-bottom border-secondary caja-section">
+                            <label class="fw-bold small text-muted mb-1"><i class="fas fa-user me-1"></i> CLIENTE:</label>
+                            <select name="cliente_id" class="form-select border-secondary shadow-sm fw-bold">
+                                <option value="" selected>-- Público General --</option>
                                 {% for c in clientes %}
-                                    <option value="{{ c.id_cliente }}">
-                                        {{ c.nombre }} {{ c.apellido|default:"" }}
-                                    </option>
+                                    <option value="{{ c.id_cliente }}">{{ c.nombre }} {{ c.apellido|default:"" }}</option>
                                 {% endfor %}
                             </select>
                         </div>
 
-                        <div class="flex-grow-1 overflow-auto" style="max-height: 400px;">
-                            <table class="table table-striped table-hover mb-0">
-                                <thead class="table-light sticky-top">
+                        <div class="flex-grow-1 overflow-auto" style="max-height: 350px;">
+                            <table class="table table-hover table-sm mb-0 align-middle" style="font-size: 0.9rem;">
+                                <thead class="sticky-top border-bottom">
                                     <tr>
-                                        <th class="ps-3">Desc</th>
-                                        <th class="text-center">Cant</th>
-                                        <th class="text-end pe-3">Subtotal</th>
+                                        <th class="ps-3 py-2 text-muted">Producto</th>
+                                        <th class="text-center py-2 text-muted">Cant</th>
+                                        <th class="text-end pe-3 py-2 text-muted">Subtotal</th>
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    {% for item in request.session.carrito %}
+                                    {% for item in carrito.values %}
                                     <tr>
-                                        <td class="ps-3 small align-middle">
-                                            {{ item.nombre }}
-                                            <a href="{% url 'facturacion_eliminar_item' forloop.counter0 %}" class="text-danger ms-2 text-decoration-none fw-bold">×</a>
+                                        <td class="ps-3 py-2">
+                                            <div class="fw-bold text-truncate" style="max-width: 170px;">
+                                                {{ item.nombre }}
+                                            </div>
+                                            <a href="{% url 'facturacion_eliminar_item' item.id %}" class="text-danger text-decoration-none small fw-bold" style="font-size: 0.75rem;">
+                                                <i class="fas fa-times"></i> Quitar
+                                            </a>
                                         </td>
-                                        <td class="align-middle text-center">
-                                            <div class="d-flex justify-content-center align-items-center gap-1">
-                                                <a href="{% url 'facturacion_restar_item' forloop.counter0 %}" class="btn btn-sm btn-outline-secondary py-0 px-2 fw-bold">-</a>
-                                                <span class="fw-bold">{{ item.cantidad }}</span>
-                                                <a href="{% url 'facturacion_sumar_item' forloop.counter0 %}" class="btn btn-sm btn-outline-secondary py-0 px-2 fw-bold">+</a>
+                                        <td class="text-center py-2">
+                                            <div class="btn-group btn-group-sm shadow-sm border border-secondary rounded">
+                                                <a href="{% url 'facturacion_restar_item' item.id %}" class="btn btn-outline-secondary px-2 fw-bold border-0">-</a>
+                                                <span class="btn disabled fw-bold px-2 border-0 bg-transparent" style="opacity: 1; color: inherit;">{{ item.cantidad }}</span>
+                                                <a href="{% url 'facturacion_sumar_item' item.id %}" class="btn btn-outline-secondary px-2 fw-bold border-0">+</a>
                                             </div>
                                         </td>
-                                        <td class="text-end pe-3 align-middle fw-bold">C$ {{ item.subtotal }}</td>
+                                        <td class="text-end pe-3 fw-bold text-success">
+                                            C$ {{ item.subtotal|floatformat:2 }}
+                                        </td>
                                     </tr>
                                     {% empty %}
                                     <tr>
-                                        <td colspan="3" class="text-center py-5 text-muted">
-                                            <i class="bi bi-basket" style="font-size: 2rem; opacity: 0.5;"></i><br>Carrito Vacío
+                                        <td colspan="3" class="text-center py-5 text-muted opacity-50">
+                                            <i class="fas fa-shopping-basket fs-1 mb-2"></i><br>
+                                            Carrito Vacío
                                         </td>
                                     </tr>
                                     {% endfor %}
@@ -145,30 +157,44 @@
                             </table>
                         </div>
 
-                        <div class="p-3 bg-white border-top shadow-lg" style="z-index: 10;">
-                            <div class="input-group mb-2">
-                                <span class="input-group-text bg-white border-0 ps-0 text-muted"><i class="bi bi-truck"></i> Envío C$:</span>
-                                <input type="number" name="costo_envio" id="input_envio" class="form-control text-end border-0 border-bottom fw-bold text-primary" placeholder="0" step="0.01">
+                        <div class="p-3 shadow-lg caja-footer" style="z-index: 10;">
+                            
+                            <div class="form-check form-switch mb-3 p-2 border border-warning rounded" style="background-color: rgba(255, 193, 7, 0.1);">
+                                <input class="form-check-input ms-1 mt-1" type="checkbox" name="es_fiado" id="checkFiado" style="cursor: pointer; transform: scale(1.2);">
+                                <label class="form-check-label fw-bold ms-2" for="checkFiado" style="cursor: pointer; color: inherit;">
+                                    📝 Venta al Crédito (Fiado)
+                                </label>
                             </div>
 
-                            <div class="d-flex justify-content-between align-items-center mb-3">
-                                <h3 class="fw-bold m-0 text-dark">TOTAL:</h3>
-                                <h1 class="fw-bold text-primary m-0" id="display_total">C$ {{ total_carrito|default:"0.00" }}</h1>
+                            <div class="input-group mb-3 shadow-sm border border-secondary rounded overflow-hidden">
+                                <span class="input-group-text bg-transparent border-0 text-muted fw-bold"><i class="fas fa-motorcycle me-2"></i> Envío C$:</span>
+                                <input type="number" name="costo_envio" id="input_envio" class="form-control text-end border-0 fw-bold bg-transparent" placeholder="0.00" step="0.01">
                             </div>
 
-                            <div class="input-group mb-3 input-group-lg">
-                                <span class="input-group-text bg-dark text-white border-dark fw-bold">PAGO C$</span>
-                                <input type="number" id="input_pago" class="form-control text-end fw-bold border-dark" placeholder="0.00" step="0.01" style="font-size: 1.5rem;">
+                            <div class="d-flex justify-content-between align-items-center mb-3 p-2 rounded" style="background-color: rgba(13, 110, 253, 0.1);">
+                                <h4 class="fw-bold m-0 text-primary">TOTAL:</h4>
+                                <h3 class="fw-bold text-primary m-0" id="display_total">C$ {{ total|default:"0.00"|floatformat:2 }}</h3>
                             </div>
 
-                            <div class="d-flex justify-content-between align-items-center mb-3">
-                                <span class="h5 m-0 text-muted">CAMBIO:</span>
+                            <div class="input-group mb-3 shadow-sm rounded overflow-hidden border border-success">
+                                <span class="input-group-text bg-success text-white border-0 fw-bold fs-5 px-3"><i class="fas fa-hand-holding-usd me-2"></i> PAGO C$</span>
+                                <input type="number" name="pago_cliente" id="input_pago" class="form-control text-end fw-bold bg-transparent border-0" placeholder="0.00" step="0.01" style="font-size: 1.4rem;" required>
+                            </div>
+
+                            <div class="d-flex justify-content-between align-items-center mb-4 px-2">
+                                <span class="text-muted fw-bold">CAMBIO:</span>
                                 <span class="h4 m-0 fw-bold text-success" id="display_cambio">C$ 0.00</span>
                             </div>
 
-                            <button type="submit" class="btn btn-success btn-lg w-100 fw-bold py-3" {% if not request.session.carrito %}disabled{% endif %}>
-                                ✅ COBRAR TICKET
-                            </button>
+                            <div class="d-flex gap-2">
+                                <a href="{% url 'facturacion_limpiar_carrito' %}" class="btn btn-outline-danger fw-bold rounded-3" style="width: 50px;" title="Vaciar Todo" onclick="return confirm('¿Borrar todo el carrito?');">
+                                    <i class="fas fa-trash-alt fs-5"></i>
+                                </a>
+                                
+                                <button type="submit" class="btn btn-success flex-grow-1 fw-bold fs-5 rounded-3 shadow-sm" {% if not carrito %}disabled{% endif %}>
+                                    ✅ COBRAR TICKET
+                                </button>
+                            </div>
                         </div>
                     </form>
                 </div>
@@ -179,35 +205,55 @@
 
 <script>
     document.addEventListener('DOMContentLoaded', function() {
-        const subtotalBase = parseFloat("{{ total_carrito|default:0 }}");
+        const subtotalBase = parseFloat("{{ total|default:0 }}".replace(',', '.'));
         const inputEnvio = document.getElementById('input_envio');
         const inputPago = document.getElementById('input_pago');
         const displayTotal = document.getElementById('display_total');
         const displayCambio = document.getElementById('display_cambio');
+        const checkFiado = document.getElementById('checkFiado');
 
         function calcular() {
             let envio = inputEnvio.value === "" ? 0 : parseFloat(inputEnvio.value);
-            let pago = inputPago.value === "" ? 0 : parseFloat(inputPago.value);
             let totalFinal = subtotalBase + envio;
-            let cambio = pago - totalFinal;
-
+            
             displayTotal.innerText = "C$ " + totalFinal.toFixed(2);
             
-            if (pago > 0) {
-                if (cambio < 0) {
-                    displayCambio.innerText = "Falta: C$ " + Math.abs(cambio).toFixed(2);
-                    displayCambio.className = "h4 m-0 fw-bold text-danger"; 
-                } else {
-                    displayCambio.innerText = "C$ " + cambio.toFixed(2);
-                    displayCambio.className = "h4 m-0 fw-bold text-success";
-                }
+            // --- LÓGICA DE FIADO ---
+            if (checkFiado.checked) {
+                inputPago.value = "";           // Borra cualquier número
+                inputPago.disabled = true;      // Bloquea la escritura
+                inputPago.placeholder = "---";  
+                inputPago.required = false;     // Ya no es obligatorio
+                
+                displayCambio.innerText = "CRÉDITO / PENDIENTE";
+                displayCambio.className = "h5 m-0 fw-bold text-warning";
             } else {
-                displayCambio.innerText = "C$ 0.00";
-                displayCambio.className = "h4 m-0 fw-bold text-muted";
+                inputPago.disabled = false;     // Reactiva la escritura
+                inputPago.placeholder = "0.00";
+                inputPago.required = true;
+
+                let pago = inputPago.value === "" ? 0 : parseFloat(inputPago.value);
+                let cambio = pago - totalFinal;
+
+                if (pago > 0) {
+                    if (cambio < 0) {
+                        displayCambio.innerText = "Falta: C$ " + Math.abs(cambio).toFixed(2);
+                        displayCambio.className = "h5 m-0 fw-bold text-danger"; 
+                    } else {
+                        displayCambio.innerText = "C$ " + cambio.toFixed(2);
+                        displayCambio.className = "h5 m-0 fw-bold text-success";
+                    }
+                } else {
+                    displayCambio.innerText = "C$ 0.00";
+                    displayCambio.className = "h5 m-0 fw-bold text-muted";
+                }
             }
         }
+
+        // Eventos
         inputEnvio.addEventListener('input', calcular);
         inputPago.addEventListener('input', calcular);
+        checkFiado.addEventListener('change', calcular); // Al mover el switch
     });
 </script>
 

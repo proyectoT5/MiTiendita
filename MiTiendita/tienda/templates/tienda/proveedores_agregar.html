@@ -5,31 +5,32 @@
 <div class="container mt-4">
     <div class="row justify-content-center">
         <div class="col-md-10">
-            <h2 class="mb-4 text-dark">Agregar Nuevo Proveedor</h2>
-            <div class="card shadow-sm border-0" style="border-radius: 15px;">
+            <h2 class="mb-4 fw-bold">Agregar Nuevo Proveedor</h2>
+            
+            <div class="card shadow-sm border-0 card-custom" style="border-radius: 15px;">
                 <div class="card-body p-5">
                     <form method="POST" id="formProveedor">
                         {% csrf_token %}
                         <div class="row">
                             <div class="col-md-12 mb-4">
                                 <label class="form-label fw-bold">Nombre de la Empresa</label>
-                                <input type="text" name="nombre_proveedor" class="form-control form-control-lg bg-light border-0" required style="border-radius: 10px;">
+                                <input type="text" name="nombre_proveedor" class="form-control form-control-lg border-0 shadow-sm" required style="border-radius: 10px;">
                             </div>
                             <div class="col-md-6 mb-4">
                                 <label class="form-label fw-bold">Correo (Opcional)</label>
-                                <input type="email" name="correo" class="form-control form-control-lg bg-light border-0" style="border-radius: 10px;">
+                                <input type="email" name="correo" class="form-control form-control-lg border-0 shadow-sm" style="border-radius: 10px;">
                             </div>
                             <div class="col-md-6 mb-4">
                                 <label class="form-label fw-bold">Dirección</label>
-                                <input type="text" name="Direccion" class="form-control form-control-lg bg-light border-0" style="border-radius: 10px;">
+                                <input type="text" name="Direccion" class="form-control form-control-lg border-0 shadow-sm" style="border-radius: 10px;">
                             </div>
                             <div class="col-md-6 mb-4">
-                                <label class="form-label fw-bold text-primary">Teléfono Principal</label>
-                                <input type="text" name="numero_telefono_P_1" class="form-control form-control-lg bg-light border-0 input-tel" placeholder="0000-0000" maxlength="9" style="border-radius: 10px;">
+                                <label class="form-label fw-bold">Teléfono Principal</label>
+                                <input type="text" name="numero_telefono_P_1" class="form-control form-control-lg border-0 shadow-sm input-tel" placeholder="0000-0000" maxlength="9" style="border-radius: 10px;">
                             </div>
                             <div class="col-md-6 mb-4">
                                 <label class="form-label fw-bold text-muted">Teléfono Secundario</label>
-                                <input type="text" name="numero_telefono_P_2" class="form-control form-control-lg bg-light border-0 input-tel" placeholder="0000-0000" maxlength="9" style="border-radius: 10px;">
+                                <input type="text" name="numero_telefono_P_2" class="form-control form-control-lg border-0 shadow-sm input-tel" placeholder="0000-0000" maxlength="9" style="border-radius: 10px;">
                             </div>
                         </div>
                         <div class="d-flex justify-content-end mt-3 gap-2">

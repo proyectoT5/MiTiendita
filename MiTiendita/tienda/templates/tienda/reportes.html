@@ -1,112 +1,99 @@
 {% extends 'tienda/base.html' %}
-{% block title %}Reportes Gerenciales{% endblock %}
+
+{% block title %}Reportes Financieros{% endblock %}
 
 {% block content %}
-<div class="container-fluid py-4">
+<div class="container mt-4">
+    
     <div class="d-flex justify-content-between align-items-center mb-4">
-        <h2 class="fw-bold text-dark"><i class="fas fa-chart-line me-2 text-primary"></i>Panel de Control</h2>
-        <span class="badge bg-light text-dark border p-2">{% now "d/m/Y" %}</span>
+        <h2 class="m-0 fw-bold"><i class="fas fa-chart-line"></i> Reporte Financiero</h2>
+        <a href="{% url 'reporte_pdf' %}" target="_blank" class="btn btn-danger shadow-sm fw-bold">
+            <i class="fas fa-file-pdf me-2"></i> Exportar a PDF
+        </a>
     </div>
-
-    <div class="row g-3 mb-4">
-        <div class="col-md-4">
-            <div class="card shadow-sm border-start border-4 border-success h-100">
-                <div class="card-body d-flex justify-content-between align-items-center">
-                    <div>
-                        <h6 class="text-uppercase text-muted small fw-bold mb-1">Ventas de Hoy</h6>
-                        <h3 class="fw-bold text-success mb-0">C$ {{ venta_hoy|floatformat:2 }}</h3>
-                    </div>
-                    <div class="bg-success bg-opacity-10 p-3 rounded-circle text-success">
-                        <i class="fas fa-cash-register fa-2x"></i>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <div class="col-md-4">
-            <div class="card shadow-sm border-start border-4 border-primary h-100">
-                <div class="card-body d-flex justify-content-between align-items-center">
-                    <div>
-                        <h6 class="text-uppercase text-muted small fw-bold mb-1">Acumulado del Mes</h6>
-                        <h3 class="fw-bold text-primary mb-0">C$ {{ venta_mes|floatformat:2 }}</h3>
-                    </div>
-                    <div class="bg-primary bg-opacity-10 p-3 rounded-circle text-primary">
-                        <i class="fas fa-calendar-alt fa-2x"></i>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <div class="col-md-4">
-            <div class="card shadow-sm border-start border-4 border-danger h-100">
-                <div class="card-body d-flex justify-content-between align-items-center">
-                    <div>
-                        <h6 class="text-uppercase text-muted small fw-bold mb-1">Stock Crítico</h6>
-                        <h3 class="fw-bold text-danger mb-0">{{ bajos_stock }} Prod.</h3>
-                    </div>
-                    <div class="bg-danger bg-opacity-10 p-3 rounded-circle text-danger">
-                        <i class="fas fa-exclamation-triangle fa-2x"></i>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <div class="row g-3 mb-4">
-        <div class="col-lg-8">
-            <div class="card shadow border-0 h-100">
-                <div class="card-header bg-white py-3">
-                    <h6 class="m-0 fw-bold text-primary"><i class="fas fa-chart-area me-1"></i> Tendencia de Ventas (Últimos 7 días)</h6>
-                </div>
+    
+    <div class="row mb-4">
+        <div class="col-md-3">
+            <div class="card text-white bg-primary mb-3 h-100 shadow border-0">
+                <div class="card-header fw-bold border-0">📅 Venta de Hoy</div>
                 <div class="card-body">
-                    <canvas id="chartVentas" height="100"></canvas>
+                    <h3 class="card-title fw-bold">C$ {{ venta_hoy|floatformat:2 }}</h3>
+                    <p class="card-text small opacity-75">Facturado hoy</p>
                 </div>
             </div>
         </div>
 
-        <div class="col-lg-4">
-            <div class="card shadow border-0 h-100">
-                <div class="card-header bg-white py-3">
-                    <h6 class="m-0 fw-bold text-dark"><i class="fas fa-crown me-1 text-warning"></i> Top 5 Más Vendidos</h6>
-                </div>
-                <div class="card-body position-relative">
-                    <canvas id="chartProductos" height="200"></canvas>
+        <div class="col-md-3">
+            <div class="card text-white bg-info mb-3 h-100 shadow border-0">
+                <div class="card-header fw-bold border-0">📆 Venta del Mes</div>
+                <div class="card-body">
+                    <h3 class="card-title fw-bold">C$ {{ venta_mes|floatformat:2 }}</h3>
+                    <p class="card-text small opacity-75">Total facturado</p>
                 </div>
             </div>
+        </div>
+
+        <div class="col-md-3">
+            <div class="card text-white bg-success mb-3 h-100 shadow border-0">
+                <div class="card-header fw-bold border-0">💰 Ganancia Neta</div>
+                <div class="card-body">
+                    <h3 class="card-title fw-bold">C$ {{ ganancia_mes }}</h3>
+                    <p class="card-text small opacity-75">Profit (Incluye Envíos)</p>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-3">
+            <a href="{% url 'control_caja' %}" class="text-decoration-none d-block h-100">
+                <div class="card text-dark bg-warning mb-3 h-100 shadow border-0" 
+                     style="transition: transform 0.2s; cursor: pointer;" 
+                     onmouseover="this.style.transform='scale(1.03)'" 
+                     onmouseout="this.style.transform='scale(1)'">
+                    
+                    <div class="card-header fw-bold border-0">
+                        <i class="fas fa-cash-register"></i> Dinero en Caja
+                    </div>
+                    <div class="card-body">
+                        <h3 class="card-title fw-bold">{{ dinero_caja }}</h3>
+                        <p class="card-text small fw-bold mt-2 opacity-75">
+                            <i class="fas fa-hand-pointer me-1"></i> Toca aquí para ir a la Caja
+                        </p>
+                    </div>
+                </div>
+            </a>
         </div>
     </div>
 
-    <div class="card shadow border-0">
-        <div class="card-header bg-danger text-white py-2">
-            <h6 class="m-0 fw-bold"><i class="fas fa-siren-on me-2"></i>Urge Reabastecer (Stock Bajo)</h6>
+    <div class="card mb-4 shadow-sm border-0 card-custom">
+        <div class="card-header bg-dark text-white fw-bold">
+            <i class="fas fa-coins"></i> Detalle de Rentabilidad (Productos del Mes)
         </div>
         <div class="card-body p-0">
-            <div class="table-responsive">
-                <table class="table table-striped mb-0 small">
-                    <thead class="bg-light">
+            <div class="table-responsive" style="max-height: 300px; overflow-y: auto;">
+                <table class="table table-striped table-hover mb-0">
+                    <thead class="sticky-top">
                         <tr>
-                            <th class="ps-3">Producto</th>
-                            <th class="text-center">Stock Actual</th>
-                            <th class="text-end pe-3">Acción</th>
+                            <th>Producto / Servicio</th>
+                            <th class="text-center">Unidades</th>
+                            <th class="text-end">Total Venta</th>
+                            <th class="text-end text-muted">Costo Aprox.</th>
+                            <th class="text-end fw-bold text-success">Ganancia</th>
                         </tr>
                     </thead>
                     <tbody>
-                        {% for item in lista_bajos_stock %}
+                        {% for item in tabla_ganancias %}
                         <tr>
-                            <td class="ps-3 fw-bold text-dark">{{ item.Nombre }}</td>
-                            <td class="text-center">
-                                <span class="badge bg-danger">{{ item.Cantidad }} uds</span>
-                            </td>
-                            <td class="text-end pe-3">
-                                <a href="{% url 'proveedor_producto_lista' %}?q={{ item.Nombre|urlencode }}" class="btn btn-sm btn-outline-danger py-0" style="font-size: 0.8rem;"> Comprar
-                            </a>
+                            <td class="align-middle fw-bold">{{ item.nombre }}</td>
+                            <td class="text-center align-middle">{{ item.vendidos }}</td>
+                            <td class="text-end align-middle fw-bold">C$ {{ item.ingreso }}</td>
+                            <td class="text-end text-muted align-middle">C$ {{ item.costo_aprox }}</td>
+                            <td class="text-end fw-bold align-middle {% if '-' in item.ganancia %}text-danger{% else %}text-success{% endif %}">
+                                {% if '-' not in item.ganancia %}+{% endif %} C$ {{ item.ganancia }}
                             </td>
                         </tr>
                         {% empty %}
                         <tr>
-                            <td colspan="3" class="text-center py-3 text-muted">
-                                ¡Todo en orden! No hay inventario bajo.
-                            </td>
+                            <td colspan="5" class="text-center py-4 text-muted">📉 No hay movimientos este mes.</td>
                         </tr>
                         {% endfor %}
                     </tbody>
@@ -114,44 +101,276 @@
             </div>
         </div>
     </div>
-</div>
 
+    <div class="card mb-4 shadow-sm border-0 card-custom">
+        <div class="card-header bg-primary text-white fw-bold">
+            <i class="fas fa-calendar-alt"></i> Historial Mensual (Flujo de Caja)
+        </div>
+        <div class="card-body p-0">
+            <div class="table-responsive" style="max-height: 300px; overflow-y: auto;">
+                <table class="table table-striped table-hover mb-0">
+                    <thead class="sticky-top">
+                        <tr>
+                            <th>Mes y Año</th>
+                            <th class="text-end text-primary">Ingresos (Ventas)</th>
+                            <th class="text-end text-danger">Inversión (Compras)</th>
+                            <th class="text-end fw-bold">Flujo Neto</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for h in tabla_historial %}
+                        <tr>
+                            <td class="fw-bold opacity-75 text-capitalize">{{ h.mes }}</td>
+                            <td class="text-end text-primary fw-bold">+ C$ {{ h.ingreso }}</td>
+                            <td class="text-end text-danger fw-bold">- C$ {{ h.gasto }}</td>
+                            <td class="text-end fw-bold {% if h.es_positivo %}text-success{% else %}text-danger{% endif %}">
+                                {% if h.es_positivo %}+{% endif %} C$ {{ h.balance }}
+                            </td>
+                        </tr>
+                        {% empty %}
+                        <tr><td colspan="4" class="text-center py-4 text-muted">Aún no hay historial suficiente.</td></tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <div class="card mb-4 shadow-sm border-0 card-custom">
+        <div class="card-header bg-secondary text-white fw-bold">
+            <i class="fas fa-calendar-day"></i> Historial de Ventas por Día
+        </div>
+        <div class="card-body p-0">
+            <div class="table-responsive" style="max-height: 300px; overflow-y: auto;">
+                <table class="table table-striped table-hover mb-0 text-center align-middle">
+                    <thead class="sticky-top">
+                        <tr>
+                            <th>Fecha</th>
+                            <th>Tickets Vendidos</th>
+                            <th class="text-end pe-4">Total Vendido (C$)</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for dia in ventas_por_dia %}
+                        <tr>
+                            <td class="fw-bold text-capitalize">{{ dia.fecha|date:"d \d\e F, Y" }}</td>
+                            <td><span class="badge bg-primary rounded-pill">{{ dia.tickets }} ventas</span></td>
+                            <td class="text-end pe-4 fw-bold text-success fs-5">C$ {{ dia.total }}</td>
+                        </tr>
+                        {% empty %}
+                        <tr><td colspan="3" class="text-muted py-4">No hay historial de ventas aún.</td></tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <div class="card mb-4 shadow-sm border-0 card-custom">
+        <div class="card-header bg-dark text-white fw-bold">
+            <i class="fas fa-money-bill-wave"></i> Historial de Dinero en Caja (Cierres)
+        </div>
+        <div class="card-body p-0">
+            <div class="table-responsive" style="max-height: 300px; overflow-y: auto;">
+                <table class="table table-hover mb-0 text-center align-middle">
+                    <thead class="sticky-top border-bottom">
+                        <tr>
+                            <th>Fecha Cierre</th>
+                            <th class="text-muted">Monto Inicial (Base)</th>
+                            <th class="fw-bold text-success">Dinero Final (En Mano)</th>
+                            <th>Arqueo</th> 
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for c in historial_cajas %}
+                        <tr>
+                            <td>
+                                <strong>{{ c.fecha_cierre|date:"d M Y" }}</strong><br>
+                                <small class="text-muted">{{ c.fecha_cierre|date:"h:i A" }}</small>
+                            </td>
+                            <td class="text-muted fw-bold">C$ {{ c.monto_inicial|floatformat:2 }}</td>
+                            <td class="fw-bold text-success fs-5">💵 C$ {{ c.monto_final|floatformat:2 }}</td>
+                            <td>
+                                <button class="btn btn-sm btn-outline-info fw-bold" 
+                                        data-bs-toggle="modal" 
+                                        data-bs-target="#modalDesglose"
+                                        data-fecha="{{ c.fecha_cierre|date:'d M Y h:i A' }}"
+                                        data-inicial="{{ c.monto_inicial|floatformat:2 }}"
+                                        data-final="{{ c.monto_final|floatformat:2 }}"
+                                        data-desglose='{{ c.arqueo_desglose|default:"{}"|safe }}'>
+                                    <i class="fas fa-search-dollar"></i> Ver Desglose
+                                </button>
+                            </td>
+                        </tr>
+                        {% empty %}
+                        <tr><td colspan="4" class="text-muted py-4"> No has cerrado ninguna caja todavía.</td></tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <div class="row">
+        <div class="col-md-6 mb-4">
+            <div class="card h-100 shadow-sm border-0 card-custom">
+                <div class="card-header fw-bold border-0 bg-transparent pt-3">📊 Top 5 Productos Más Vendidos</div>
+                <div class="card-body">
+                    <canvas id="graficoProductos"></canvas>
+                </div>
+            </div>
+        </div>
+        
+        <div class="col-md-6 mb-4">
+            <div class="card h-100 border-danger shadow-sm card-custom">
+                <div class="card-header bg-danger text-white fw-bold">
+                    🚨 Alerta de Abastecimiento ({{ bajos_stock }})
+                </div>
+                <ul class="list-group list-group-flush" style="max-height: 300px; overflow-y: auto;">
+                    {% for p in lista_bajos_stock %}
+                        <li class="list-group-item d-flex justify-content-between align-items-center bg-transparent border-secondary">
+                            <div>
+                                <strong class="text-danger">{{ p.nombre }}</strong><br>
+                                <small class="opacity-75">ID: {{ p.id_producto }}</small>
+                            </div>
+                            <div class="d-flex align-items-center gap-2">
+                                <span class="badge bg-danger rounded-pill">Quedan: {{ p.cantidad }}</span>
+                                <a href="{% url 'proveedor_producto_agregar' %}" class="btn btn-sm btn-outline-danger fw-bold"><i class="fas fa-plus"></i> Surtir</a>
+                            </div>
+                        </li>
+                    {% empty %}
+                        <li class="list-group-item text-center py-4 bg-transparent opacity-75 border-0">¡Todo el inventario está sano! ✅</li>
+                    {% endfor %}
+                </ul>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal fade" id="modalDesglose" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content card-custom border-0 shadow-lg" style="border-radius: 15px;">
+                <div class="modal-header bg-info text-white border-0" style="border-radius: 15px 15px 0 0;">
+                    <h5 class="modal-title fw-bold"><i class="fas fa-search-dollar me-2"></i> Desglose de Caja</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body p-4">
+                    
+                    <div class="text-center mb-4">
+                        <h6 class="text-muted fw-bold text-uppercase" id="descFecha">Fecha del turno</h6>
+                    </div>
+
+                    <div class="d-flex justify-content-between align-items-center mb-3 p-2 rounded border border-secondary shadow-sm" style="background-color: rgba(108, 117, 125, 0.1);">
+                        <span class="text-secondary fw-bold">Base Inicial con la que abrió:</span>
+                        <span class="fw-bold fs-5 text-primary" id="descInicial">C$ 0.00</span>
+                    </div>
+
+                    <div id="contenedorBilletes" class="mb-3 px-2">
+                        </div>
+
+                    <div class="d-flex justify-content-between align-items-center p-2 rounded border border-success shadow-sm" style="background-color: rgba(25, 135, 84, 0.1);">
+                        <span class="text-success fw-bold">Efectivo Físico Contado:</span>
+                        <span class="fw-bold text-success fs-4" id="descFinal">C$ 0.00</span>
+                    </div>
+
+                </div>
+                <div class="modal-footer border-secondary bg-transparent border-top">
+                    <button type="button" class="btn btn-secondary fw-bold w-100" data-bs-dismiss="modal" style="border-radius: 10px;">Cerrar Detalle</button>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+</div>
+{% endblock %}
+
+{% block content_scripts %}
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <script>
-    // Gráfico de Ventas
-    const ctxVentas = document.getElementById('chartVentas').getContext('2d');
-    let gradient = ctxVentas.createLinearGradient(0, 0, 0, 400);
-    gradient.addColorStop(0, 'rgba(13, 110, 253, 0.5)');
-    gradient.addColorStop(1, 'rgba(13, 110, 253, 0.0)');
+    // Lógica de Chart.js
+    const isDark = document.documentElement.getAttribute('data-bs-theme') === 'dark';
+    Chart.defaults.color = isDark ? '#e0e0e0' : '#666';
+    Chart.defaults.borderColor = isDark ? '#444' : '#ddd';
 
-    new Chart(ctxVentas, {
-        type: 'line',
+    const ctxProd = document.getElementById('graficoProductos').getContext('2d');
+    let labels = JSON.parse('{{ labels_prod_json|escapejs }}');
+    let data = JSON.parse('{{ data_prod_json|escapejs }}');
+
+    new Chart(ctxProd, {
+        type: 'bar',
         data: {
-            labels: {{ labels_dias_json|safe }},
+            labels: labels,
             datasets: [{
-                label: 'Ventas (C$)',
-                data: {{ data_dias_json|safe }},
-                borderColor: '#0d6efd',
-                backgroundColor: gradient,
-                borderWidth: 3,
-                fill: true,
-                tension: 0.4
+                label: 'Unidades Vendidas',
+                data: data,
+                backgroundColor: 'rgba(54, 162, 235, 0.7)',
+                borderColor: 'rgba(54, 162, 235, 1)',
+                borderWidth: 2,
+                borderRadius: 4
             }]
+        },
+        options: {
+            responsive: true,
+            scales: { y: { beginAtZero: true, ticks: { stepSize: 1 } } },
+            plugins: { legend: { labels: { color: isDark ? '#e0e0e0' : '#666' } } }
         }
     });
 
-    // Gráfico de Productos
-    const ctxProd = document.getElementById('chartProductos').getContext('2d');
-    new Chart(ctxProd, {
-        type: 'doughnut',
-        data: {
-            labels: {{ labels_prod_json|safe }},
-            datasets: [{
-                data: {{ data_prod_json|safe }},
-                backgroundColor: ['#4e73df', '#1cc88a', '#36b9cc', '#f6c23e', '#e74a3b']
-            }]
-        },
-        options: { maintainAspectRatio: false }
+    // LÓGICA PARA EL MODAL Y EL DESGLOSE DE BILLETES
+    document.addEventListener('DOMContentLoaded', function() {
+        var modalDesglose = document.getElementById('modalDesglose');
+        if (modalDesglose) {
+            modalDesglose.addEventListener('show.bs.modal', function (event) {
+                var button = event.relatedTarget; 
+                
+                var fecha = button.getAttribute('data-fecha');
+                var inicial = parseFloat(button.getAttribute('data-inicial').replace(',', '.'));
+                var final = parseFloat(button.getAttribute('data-final').replace(',', '.'));
+                
+                document.getElementById('descFecha').innerText = "Turno cerrado el: " + fecha;
+                document.getElementById('descInicial').innerText = "C$ " + inicial.toFixed(2);
+                document.getElementById('descFinal').innerText = "C$ " + final.toFixed(2);
+
+                var contenedor = document.getElementById('contenedorBilletes');
+                contenedor.innerHTML = ""; 
+                
+                var desglose = {};
+                try {
+                    desglose = JSON.parse(button.getAttribute('data-desglose'));
+                } catch(e) { console.error("No se pudo leer el desglose"); }
+
+                if(desglose.cordobas || desglose.dolares) {
+                    let html = '<div class="row text-start">';
+                    
+                    // Columna Córdobas
+                    html += '<div class="col-6"><h6 class="text-primary fw-bold border-bottom border-primary pb-1">Córdobas</h6>';
+                    for(let billete in desglose.cordobas) {
+                        let cantidad = desglose.cordobas[billete];
+                        let estiloClase = cantidad > 0 ? "fw-bold text-body" : "text-muted opacity-50";
+                        html += `<div class="d-flex justify-content-between border-bottom border-secondary py-1 ${estiloClase}"><span class="small">${billete}</span><span>x ${cantidad}</span></div>`;
+                    }
+                    html += '</div>';
+
+                    // Columna Dólares
+                    html += '<div class="col-6"><h6 class="text-success fw-bold border-bottom border-success pb-1">Dólares</h6>';
+                    for(let billete in desglose.dolares) {
+                        let cantidad = desglose.dolares[billete];
+                        let estiloClase = cantidad > 0 ? "fw-bold text-success" : "text-muted opacity-50";
+                        html += `<div class="d-flex justify-content-between border-bottom border-secondary py-1 ${estiloClase}"><span class="small">${billete}</span><span>x ${cantidad}</span></div>`;
+                    }
+                    html += '</div>';
+
+                    html += '</div>';
+
+                    if(desglose.tasa) {
+                        html += `<div class="text-center mt-3 small text-muted"><i class="fas fa-exchange-alt me-1"></i> Tasa de cambio usada al cerrar: C$ ${desglose.tasa}</div>`;
+                    }
+                    
+                    contenedor.innerHTML = html;
+                } else {
+                    contenedor.innerHTML = '<div class="text-center text-muted py-3"><i class="fas fa-ghost fa-2x mb-2 opacity-50"></i><p class="mb-0">No hay detalle de billetes para este turno. Fue cerrado a la antigua.</p></div>';
+                }
+            });
+        }
     });
 </script>
 {% endblock %}

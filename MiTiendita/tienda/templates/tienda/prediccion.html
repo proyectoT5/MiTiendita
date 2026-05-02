@@ -4,43 +4,48 @@
 {% block content %}
     
     <div class="d-flex justify-content-between align-items-center mb-4">
-        <h1 class="h2">Calculadora de Lotes</h1>
+        <h1 class="h2 fw-bold"><i class="fas fa-magic text-info me-2"></i> Calculadora de Lotes</h1>
     </div>
 
     <div class="row">
         <div class="col-md-5 mb-4">
-            <div class="card shadow-sm h-100">
-                <div class="card-header bg-primary text-white">
-                    <h5 class="mb-0"><i class="fas fa-edit me-2"></i>Datos del Lote</h5>
+            <div class="card shadow-sm h-100 border-0 card-custom" style="border-radius: 15px;">
+                <div class="card-header bg-primary text-white border-0" style="border-radius: 15px 15px 0 0;">
+                    <h5 class="mb-0 fw-bold"><i class="fas fa-edit me-2"></i>Datos del Lote</h5>
                 </div>
-                <div class="card-body">
+                <div class="card-body p-4">
                     <form method="POST">
                         {% csrf_token %}
                         
                         <div class="mb-3">
                             <label for="costo_total_lote" class="form-label fw-bold">1. Costo Total del Lote</label>
-                            <div class="input-group">
-                                <span class="input-group-text">C$</span>
-                                <input type="number" step="0.01" class="form-control" id="costo_total_lote" name="costo_total_lote" placeholder="Ej: 400" required>
+                            <div class="input-group shadow-sm" style="border-radius: 8px; overflow: hidden;">
+                                <span class="input-group-text bg-transparent border-secondary fw-bold">C$</span>
+                                <input type="number" step="0.01" class="form-control bg-transparent border-secondary fw-bold" id="costo_total_lote" name="costo_total_lote" placeholder="Ej: 400" required>
                             </div>
                         </div>
 
                         <div class="mb-3">
                             <label for="cantidad_comprada" class="form-label fw-bold">2. Cantidad de Items</label>
-                            <input type="number" class="form-control" id="cantidad_comprada" name="cantidad_comprada" placeholder="Ej: 24" required>
+                            <input type="number" class="form-control bg-transparent border-secondary shadow-sm fw-bold" id="cantidad_comprada" name="cantidad_comprada" placeholder="Ej: 24" required style="border-radius: 8px;">
                         </div>
                         
                         <div class="mb-4">
                             <label for="precio_venta_unitario" class="form-label fw-bold">3. Precio de Venta (Unitario)</label>
-                            <div class="input-group">
-                                <span class="input-group-text">C$</span>
-                                <input type="number" step="0.01" class="form-control" id="precio_venta_unitario" name="precio_venta_unitario" placeholder="Ej: 25" required>
+                            <div class="input-group shadow-sm" style="border-radius: 8px; overflow: hidden;">
+                                <span class="input-group-text bg-transparent border-secondary fw-bold">C$</span>
+                                <input type="number" step="0.01" class="form-control bg-transparent border-secondary fw-bold" id="precio_venta_unitario" name="precio_venta_unitario" placeholder="Ej: 25" required>
                             </div>
                         </div>
                         
-                        <button type="submit" class="btn btn-primary w-100 py-2 fw-bold shadow-sm">
-                            <i class="fas fa-calculator me-2"></i> Calcular Ganancia
-                        </button>
+                        <div class="d-flex gap-2 mt-4">
+                            <a href="{% url 'prediccion_view' %}" class="btn btn-secondary w-50 py-2 fw-bold shadow-sm" style="border-radius: 8px;">
+                                <i class="fas fa-undo me-1"></i> Reiniciar
+                            </a>
+                            <button type="submit" class="btn btn-primary w-50 py-2 fw-bold shadow-sm" style="border-radius: 8px;">
+                                <i class="fas fa-calculator me-1"></i> Calcular
+                            </button>
+                        </div>
                     </form>
                 </div>
             </div>
@@ -48,42 +53,43 @@
 
         <div class="col-md-7 mb-4">
             {% if resultados %}
-            <div class="card shadow-sm h-100 border-0">
-                <div class="card-header bg-success text-white">
-                    <h5 class="mb-0"><i class="fas fa-chart-line me-2"></i>Resultados</h5>
+            <div class="card shadow-sm h-100 border-0 card-custom" style="border-radius: 15px;">
+                <div class="card-header bg-success text-white border-0" style="border-radius: 15px 15px 0 0;">
+                    <h5 class="mb-0 fw-bold"><i class="fas fa-chart-line me-2"></i>Resultados</h5>
                 </div>
-                <div class="card-body">
+                <div class="card-body p-4">
                     
                     <div class="row mb-4">
                         <div class="col-6">
-                            <div class="p-3 rounded border text-center h-100 d-flex flex-column justify-content-center result-box">
+                            <div class="p-3 rounded border border-secondary shadow-sm text-center h-100 d-flex flex-column justify-content-center result-box">
                                 <small class="text-uppercase fw-bold mb-1 opacity-75">Costo Unitario Real</small>
                                 <h3 class="fw-bold mb-0 text-danger">C$ {{ resultados.costo_unitario|floatformat:2 }}</h3>
                             </div>
                         </div>
                         <div class="col-6">
-                            <div class="p-3 rounded border text-center h-100 d-flex flex-column justify-content-center result-box">
+                            <div class="p-3 rounded border border-secondary shadow-sm text-center h-100 d-flex flex-column justify-content-center result-box">
                                 <small class="text-uppercase fw-bold mb-1 opacity-75">Ganancia por Unidad</small>
                                 <h3 class="fw-bold mb-0 text-success">C$ {{ resultados.ganancia_unitaria|floatformat:2 }}</h3>
                             </div>
                         </div>
                     </div>
                     
-                    <div class="p-4 rounded-3 border border-success text-center final-result-box" style="background-color: rgba(25, 135, 84, 0.1);">
+                    <div class="p-4 rounded-3 border border-success text-center shadow-sm" style="background-color: rgba(25, 135, 84, 0.1);">
                         <h4 class="fw-bold mb-3 text-success">Ganancia Total del Lote</h4>
                         <h1 class="display-3 fw-bold text-success mb-0">
                             C$ {{ resultados.ganancia_total_lote|floatformat:2 }}
                         </h1>
-                        <p class="mt-2 mb-0 fst-italic opacity-75">(Si vendés las {{ request.POST.cantidad_comprada }} unidades)</p>
+                        <p class="mt-2 mb-0 fw-bold opacity-75">(Si vendés las {{ request.POST.cantidad_comprada }} unidades)</p>
                     </div>
                     
                 </div>
             </div>
             {% else %}
-            <div class="card shadow-sm h-100 d-flex align-items-center justify-content-center border-dashed">
+            <div class="card shadow-sm h-100 d-flex align-items-center justify-content-center border-0 card-custom" style="border-radius: 15px; border: 2px dashed #6c757d !important;">
                 <div class="text-center py-5 opacity-50">
-                    <i class="fas fa-calculator fa-5x mb-3"></i>
-                    <h4>Esperando datos...</h4>
+                    <i class="fas fa-calculator fa-5x mb-3 text-primary"></i>
+                    <h4 class="fw-bold">Esperando datos...</h4>
+                    <p>Llená el formulario y dale a calcular.</p>
                 </div>
             </div>
             {% endif %}
@@ -94,7 +100,6 @@
         /* En modo oscuro, los bordes y fondos de las cajitas internas se ajustan */
         [data-bs-theme="dark"] .result-box {
             background-color: #2c2c2c; /* Fondo gris oscuro */
-            border-color: #444 !important;
         }
         [data-bs-theme="light"] .result-box {
             background-color: #f8f9fa; /* Fondo gris claro */
@@ -105,8 +110,6 @@
         [data-bs-theme="dark"] .text-muted {
             color: #adb5bd !important; /* Gris claro para que se lea */
         }
-
-        /* La caja final verde se ve bien en ambos modos gracias a la transparencia */
     </style>
 
 {% endblock %}

@@ -1,48 +1,58 @@
 from django.db import models
 
 # ==========================================
-# 1. TABLAS EXISTENTES (Managed = False)
+#  MODELOS "LEGACY" (Corregidos a minúsculas)
 # ==========================================
 
 class Clientes(models.Model):
     id_cliente = models.IntegerField(db_column='id_cliente', primary_key=True)
     nombre = models.CharField(db_column='nombre', max_length=100)
     apellido = models.CharField(db_column='apellido', max_length=100, blank=True, null=True)
-    
-    # IMPORTANTE: Si te da error en uno de estos, es porque en tu SQL Server 
-    # la columna se llama diferente (ej: 'tel', 'celular', 'dir').
-    # Si no estás seguro, comenta estas líneas y deja solo id, nombre y apellido.
-    telefono_principal = models.CharField(db_column='telefono', max_length=20, blank=True, null=True)
-    telefono_secundario = models.CharField(db_column='telefono2', max_length=20, blank=True, null=True)
-    direccion = models.TextField(db_column='direccion_cliente', blank=True, null=True)
+    correo = models.CharField(db_column='correo', max_length=150, blank=True, null=True)
     activo = models.BooleanField(db_column='activo', default=True)
+    esocasional = models.BooleanField(db_column='EsOcasional', default=False)
 
     class Meta:
-        managed = False 
+        managed = True
         db_table = 'Clientes'
 
     def __str__(self):
         return f"{self.nombre} {self.apellido or ''}"
 
+class ClienteTelefono(models.Model):
+    id_telefonocli = models.AutoField(db_column='id_telefonoCli', primary_key=True)
+    id_cliente = models.ForeignKey(Clientes, models.DO_NOTHING, db_column='id_cliente')
+    numero_telefono_c = models.CharField(db_column='numero_telefono_C', max_length=20)
+
+    class Meta:
+        managed = True
+        db_table = 'ClienteTelefono'
 
 class Proveedores(models.Model):
-    id_proveedor = models.AutoField(db_column='Id_Proveedor', primary_key=True)
-    nombre = models.CharField(db_column='Nombre', max_length=100)
-    telefono = models.CharField(db_column='Telefono', max_length=20, blank=True, null=True)
-    contacto = models.CharField(db_column='Contacto', max_length=100, blank=True, null=True)
+    id_proveedor = models.IntegerField(db_column='id_Proveedor', primary_key=True)
+    nombre_proveedor = models.CharField(db_column='nombre_proveedor', max_length=100)
+    correo = models.CharField(db_column='correo', max_length=100, blank=True, null=True)
+    direccion = models.TextField(db_column='Direccion', blank=True, null=True)
     activo = models.BooleanField(db_column='Activo', default=True)
 
     class Meta:
-        managed = False
+        managed = True
         db_table = 'Proveedores'
-        verbose_name_plural = "Proveedores"
 
     def __str__(self):
-        return self.nombre
+        return self.nombre_proveedor
 
+class ProveedorTelefono(models.Model):
+    id_telefonoprove = models.AutoField(db_column='id_telefonoProve', primary_key=True)
+    id_proveedor = models.ForeignKey(Proveedores, models.DO_NOTHING, db_column='id_Proveedor')
+    numero_telefono_p = models.CharField(db_column='numero_telefono_P', max_length=20)
+
+    class Meta:
+        managed = True
+        db_table = 'ProveedorTelefono'
 
 class Productos(models.Model):
-    # Usamos IntegerField porque tu SQL Server no es automático (Identity)
+    # CAMBIO IMPORTANTE: id_producto en minúscula para Python, apuntando a Id_Producto en SQL
     id_producto = models.IntegerField(db_column='Id_Producto', primary_key=True)
     nombre = models.CharField(db_column='Nombre', max_length=100)
     precioventa = models.DecimalField(db_column='PrecioVenta', max_digits=10, decimal_places=2)
@@ -50,17 +60,14 @@ class Productos(models.Model):
     rutafoto = models.ImageField(db_column='rutaFoto', upload_to='productos/', null=True, blank=True)
     stockminimo = models.IntegerField(db_column='StockMinimo', blank=True, null=True)
     activo = models.BooleanField(db_column='Activo', default=True)
-    
-    # ⚠️ IMPORTANTE: El nombre del campo debe ser idproveedor para que coincida con la BD
     idproveedor = models.ForeignKey(Proveedores, models.DO_NOTHING, db_column='IdProveedor', blank=True, null=True)
 
     class Meta:
-        managed = False
+        managed = True
         db_table = 'Productos'
 
     def __str__(self):
         return self.nombre
-
 
 class ProveedorProducto(models.Model):
     id_asignacion = models.AutoField(db_column='Id_Asignacion', primary_key=True)
@@ -71,40 +78,58 @@ class ProveedorProducto(models.Model):
     activo = models.BooleanField(db_column='Activo', default=True)
 
     class Meta:
-        managed = False
+        managed = True
         db_table = 'ProveedorProducto'
-        verbose_name_plural = "Costos"
-
 
 # ==========================================
-# 2. TABLAS NUEVAS (Managed = True)
+#  NUEVOS MODELOS (Sistema Financiero)
 # ==========================================
+
+class Usuarios(models.Model):
+    id_usuario = models.AutoField(primary_key=True) # Cambiado a minúscula para evitar lios
+    Nombre = models.CharField(max_length=100)
+    Correo = models.CharField(max_length=100, unique=True)
+    Contraseña = models.CharField(max_length=100)
+    Rol = models.CharField(max_length=50)
+    token_recuperacion = models.CharField(max_length=100, null=True, blank=True)
+
+    def __str__(self):
+        return f"{self.Nombre} ({self.Rol})"
+
+class Egresos(models.Model):
+    fecha = models.DateTimeField(auto_now_add=True)
+    concepto = models.CharField(max_length=200)
+    monto = models.DecimalField(max_digits=10, decimal_places=2)
+
+    def __str__(self):
+        return f"{self.concepto} - C$ {self.monto}"
+
+class CajaDiaria(models.Model):
+    fecha_apertura = models.DateTimeField(auto_now_add=True)
+    fecha_cierre = models.DateTimeField(null=True, blank=True)
+    monto_inicial = models.DecimalField(max_digits=10, decimal_places=2)
+    monto_final = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+    activa = models.BooleanField(default=True)
+    # NUEVO: Aquí vamos a guardar la lista de billetes en formato de texto (JSON)
+    arqueo_desglose = models.TextField(blank=True, null=True)
+
+    def __str__(self):
+        return f"Caja {self.fecha_apertura}"
 
 class Facturas(models.Model):
-    Id_Factura = models.IntegerField(db_column='id_factura', primary_key=True)
-    Fecha = models.DateTimeField(db_column='FechaHora', auto_now_add=True)
-    Cliente = models.ForeignKey(Clientes, models.DO_NOTHING, db_column='id_cliente')
-    Total = models.DecimalField(db_column='Total', max_digits=10, decimal_places=2)
-    # Campos extra de tu BD vieja
-    MontoPagado = models.DecimalField(db_column='MontoPagado', max_digits=10, decimal_places=2, null=True, blank=True)
-    Cambio = models.DecimalField(db_column='Cambio', max_digits=10, decimal_places=2, null=True, blank=True)
-    CostoEnvio = models.DecimalField(db_column='CostoEnvio', max_digits=10, decimal_places=2, null=True, blank=True)
+    id_factura = models.AutoField(primary_key=True)
+    FechaHora = models.DateTimeField(auto_now_add=True)
+    cliente = models.ForeignKey(Clientes, on_delete=models.CASCADE)
+    Total = models.DecimalField(max_digits=10, decimal_places=2)
+    CostoEnvio = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    anulada = models.BooleanField(default=False)
+    en_deuda = models.BooleanField(default=False)  # True = Me debe, False = Ya pagó
 
-    class Meta:
-        managed = False   # <--- ESTO EN FALSO (Usamos la tabla vieja 'factura')
-        db_table = 'factura' 
-        verbose_name_plural = "Facturas"
+    def __str__(self):
+        return f"Factura #{self.id_factura}"
 
 class DetalleFactura(models.Model):
-    # Asumimos que esta tabla también existe ya. 
-    # Si te da error de columnas, avísame para ajustar los nombres.
-    Id_Detalle = models.AutoField(primary_key=True)
-    Factura = models.ForeignKey(Facturas, models.DO_NOTHING, db_column='id_factura')
-    Producto = models.ForeignKey(Productos, models.DO_NOTHING, db_column='id_producto')
+    id_factura = models.ForeignKey(Facturas, on_delete=models.CASCADE)
+    id_producto = models.ForeignKey(Productos, on_delete=models.CASCADE)
     Cantidad = models.IntegerField()
     Subtotal = models.DecimalField(max_digits=10, decimal_places=2)
-
-    class Meta:
-        managed = False # Usamos la tabla existente
-        db_table = 'DetalleFactura' # Asegúrate que este sea el nombre en SQL
-        verbose_name_plural = "Detalles de Factura"

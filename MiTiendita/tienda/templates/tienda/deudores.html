@@ -1,0 +1,130 @@
+{% extends 'tienda/base.html' %}
+
+{% block content %}
+<div class="container mt-4">
+    <div class="card shadow-lg border-0 card-custom">
+        <div class="card-header bg-danger text-white d-flex justify-content-between align-items-center py-3" style="border-radius: 15px 15px 0 0;">
+            <h4 class="m-0 fw-bold"><i class="fas fa-user-clock me-2"></i> Lista de Deudores (Fiado)</h4>
+            <div class="bg-white text-danger px-4 py-2 rounded-pill fw-bold shadow-sm">
+                Total en la calle: C$ {{ total_calle|floatformat:2 }}
+            </div>
+        </div>
+        
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-hover table-striped mb-0 align-middle">
+                    <thead class="border-bottom">
+                        <tr>
+                            <th class="ps-4">Fecha</th>
+                            <th>Cliente</th>
+                            <th style="width: 40%;">Productos que debe</th> 
+                            <th class="text-end">Monto (C$)</th>
+                            <th class="text-center pe-4">Acción</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for d in deudores %}
+                        <tr>
+                            <td class="ps-4 text-muted">{{ d.fecha|date:"d/m/Y h:i A" }}</td>
+                            <td>
+                                <div class="fw-bold">{{ d.cliente.nombre }} {{ d.cliente.apellido|default:"" }}</div>
+                                <small class="text-muted">ID: {{ d.cliente.id_cliente }}</small>
+                            </td>
+                            <td>
+                                <div class="border border-secondary rounded p-2 bg-transparent text-muted small shadow-sm" style="max-height: 80px; overflow-y: auto;">
+                                    {{ d.productos }}
+                                </div>
+                            </td>
+                            <td class="text-end fw-bold text-danger fs-5">C$ {{ d.total|floatformat:2 }}</td>
+                            <td class="text-center pe-4">
+                                <button type="button" class="btn btn-sm btn-outline-success fw-bold shadow-sm" 
+                                        data-bs-toggle="modal" 
+                                        data-bs-target="#modalCobrar"
+                                        data-id="{{ d.id }}"
+                                        data-cliente="{{ d.cliente.nombre }} {{ d.cliente.apellido|default:'' }}"
+                                        data-monto="{{ d.total|floatformat:2 }}">
+                                    <i class="fas fa-hand-holding-usd me-1"></i> COBRAR
+                                </button>
+                            </td>
+                        </tr>
+                        {% empty %}
+                        <tr>
+                            <td colspan="5" class="text-center py-5 text-muted opacity-75">
+                                <i class="fas fa-glass-cheers fa-3x mb-3 text-success"></i><br>
+                                <h5 class="fw-bold">¡Nadie te debe nada! Todo al día. 🎉</h5>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        <div class="card-footer text-center bg-transparent border-top border-secondary py-4" style="border-radius: 0 0 15px 15px;">
+            <a href="{% url 'facturacion_view' %}" class="btn btn-secondary fw-bold shadow-sm px-4" style="border-radius: 10px;">
+                <i class="fas fa-arrow-left me-2"></i> Volver a Caja
+            </a>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade" id="modalCobrar" tabindex="-1" aria-labelledby="modalCobrarLabel" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content card-custom border-0 shadow-lg" style="border-radius: 15px;">
+      
+      <div class="modal-header bg-success text-white border-0" style="border-radius: 15px 15px 0 0;">
+        <h5 class="modal-title fw-bold" id="modalCobrarLabel"><i class="fas fa-check-circle me-2"></i> Confirmar Pago</h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      
+      <div class="modal-body p-4 text-center">
+        <i class="fas fa-money-bill-wave fa-3x text-success mb-3 opacity-75"></i>
+        <h5 class="mb-3 fw-bold text-body">¿Confirmás que recibiste el pago?</h5>
+        
+        <div class="p-3 border border-success rounded shadow-sm" style="background-color: rgba(25, 135, 84, 0.1);">
+            <p class="mb-1 text-muted">Cliente: <strong class="text-body fs-5" id="modalClienteNombre">Nombre</strong></p>
+            <p class="mb-0 text-muted">Monto cancelado: <strong class="text-success fs-3" id="modalMontoDeuda">C$ 0.00</strong></p>
+        </div>
+        
+        <p class="small text-muted mt-3 mb-0 fst-italic">Esta acción borrará la deuda del sistema.</p>
+      </div>
+      
+      <div class="modal-footer border-secondary bg-transparent border-top justify-content-center gap-2">
+        <button type="button" class="btn btn-secondary fw-bold px-4" data-bs-dismiss="modal" style="border-radius: 8px;">Cancelar</button>
+        <a href="#" id="btnConfirmarCobro" class="btn btn-success fw-bold px-4 shadow-sm" style="border-radius: 8px;">
+            Sí, liquidar deuda
+        </a>
+      </div>
+      
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block content_scripts %}
+<script>
+    // Lógica para que el Modal de cobro agarre los datos del botón que tocaste
+    document.addEventListener('DOMContentLoaded', function() {
+        var modalCobrar = document.getElementById('modalCobrar');
+        if (modalCobrar) {
+            modalCobrar.addEventListener('show.bs.modal', function (event) {
+                // Botón que activó el modal
+                var button = event.relatedTarget; 
+                
+                // Extraer información de los atributos data-*
+                var idDeuda = button.getAttribute('data-id');
+                var cliente = button.getAttribute('data-cliente');
+                var monto = button.getAttribute('data-monto');
+                
+                // Actualizar el contenido del modal
+                document.getElementById('modalClienteNombre').innerText = cliente;
+                document.getElementById('modalMontoDeuda').innerText = "C$ " + monto;
+                
+                // Actualizar el link (href) del botón verde para que apunte a la ruta correcta de pago
+                // NOTA: Reemplazamos un '0' temporal en la URL por el ID real
+                var urlPago = "{% url 'pagar_deuda' 0 %}".replace('0', idDeuda);
+                document.getElementById('btnConfirmarCobro').setAttribute('href', urlPago);
+            });
+        }
+    });
+</script>
+{% endblock %}
