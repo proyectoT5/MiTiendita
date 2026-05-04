@@ -4,37 +4,39 @@ from django.contrib.auth import authenticate, login as auth_login, logout as aut
 from django.contrib.auth.models import User
 from django.contrib.auth.decorators import login_required
 from django.db.models import Q
-
+from .utils import validar_otp  # o donde pongas la lógica
+from .utils import generar_otp
+import pyotp
 # ==========================================
 #             LOGIN / LOGOUT
 # ==========================================
-
 def login_sql_view(request):
     if request.method == 'POST':
         nombre = request.POST.get('username') 
         contra = request.POST.get('password')
 
-        # 1. AUTENTICACIÓN REAL DE DJANGO
-        # Esto verifica el usuario 'admin' que creamos en la consola
         user = authenticate(request, username=nombre, password=contra)
 
         if user is not None:
             if user.is_active:
-                auth_login(request, user)
-                
-                # Guardamos datos en sesión para que tu HTML antiguo no falle
-                request.session['user_id'] = user.id
-                request.session['user_nombre'] = user.username
-                request.session['user_rol'] = 'Admin' if user.is_superuser else 'Vendedor'
-                
-                return redirect('dashboard') # Asegúrate que esta URL exista
+
+                # 🔥 GENERAR OTP
+                generar_otp(user)
+
+                # 🔥 GUARDAR USUARIO TEMPORAL
+                request.session['user_id_temp'] = user.id
+
+                # ❌ YA NO HACEMOS LOGIN AQUÍ
+                # auth_login(request, user)
+
+                return redirect('verificar_otp')
+
             else:
                 messages.error(request, "Usuario desactivado.")
         else:
             messages.error(request, "Usuario o contraseña incorrectos.")
             
     return render(request, 'usuarios/login.html')
-
 def logout_view(request):
     auth_logout(request) # Limpieza total de sesión
     try:
@@ -201,3 +203,68 @@ def usuarios_reactivar_view(request, id_usuario):
     except User.DoesNotExist:
         messages.error(request, "Usuario no encontrado.")
     return redirect('usuarios_lista')
+
+#cambiar contraseña con codigo
+def recuperar_password_view(request):
+    if request.method == 'POST':
+        username = request.POST.get('username')
+
+        try:
+            user = User.objects.get(username=username)
+        except User.DoesNotExist:
+            messages.error(request, "Usuario no encontrado")
+            return redirect('usuarios/recuperar_password')
+
+        secret = pyotp.random_base32()
+
+        request.session['otp_secret'] = secret
+        request.session['user_id_temp'] = user.id
+
+        totp = pyotp.TOTP(secret)
+        uri = totp.provisioning_uri(name=user.username, issuer_name="MiTiendita")
+
+        return render(request, 'usuarios/otp_qr.html', {'uri': uri})
+
+    # 👇 ESTE es el correcto
+    return render(request, 'usuarios/recuperar_password.html')
+
+def validar_otp(request, codigo):
+    secret = request.session.get('otp_secret')
+    if not secret:
+        return False
+
+    totp = pyotp.TOTP(secret)
+    return totp.verify(codigo)
+
+def verificar_otp_view(request):
+    if request.method == 'POST':
+        codigo = request.POST.get('otp')  # 👈 debe coincidir con el input HTML
+        user_id = request.session.get('user_id_temp')
+
+        if not user_id:
+            return redirect('login')
+
+        try:
+            user = User.objects.get(id=user_id)
+        except User.DoesNotExist:
+            return redirect('login')
+
+        if validar_otp(request, codigo):
+            
+            # 🔥 LOGIN AUTOMÁTICO
+            auth_login(request, user)
+
+            # compatibilidad con tu sistema actual
+            request.session['user_id'] = user.id
+            request.session['user_nombre'] = user.username
+            request.session['user_rol'] = 'Admin' if user.is_superuser else 'Vendedor'
+
+            # limpiar sesión temporal
+            del request.session['user_id_temp']
+            del request.session['otp_secret']
+
+            return redirect('dashboard')
+        else:
+            messages.error(request, "Código OTP inválido")
+
+    return render(request, 'usuarios/verificar_otp.html')

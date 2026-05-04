@@ -75,6 +75,7 @@ urlpatterns = [
     path('reportes/pdf/', views.reporte_pdf_view, name='reporte_pdf'),
 
     #recuperacion de password
+    
 
 ]
 

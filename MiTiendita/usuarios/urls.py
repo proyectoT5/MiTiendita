@@ -23,4 +23,7 @@ urlpatterns = [
     
     # 5. REACTIVAR (Aquí también: id_usuario)
     path('usuarios/reactivar/<int:id_usuario>/', views.usuarios_reactivar_view, name='usuario_reactivar'),
+    path('verificar-otp/', views.verificar_otp_view, name='verificar_otp'),
+    path('recuperar-password/', views.recuperar_password_view, name='recuperar_password'),
+
 ]

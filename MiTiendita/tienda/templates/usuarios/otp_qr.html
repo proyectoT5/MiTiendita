@@ -1,0 +1,96 @@
+{% load static %}
+<!DOCTYPE html>
+
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+
+<!-- Bootstrap -->
+<link rel="stylesheet" href="{% static 'bootstrap/css/bootstrap.min.css' %}">
+
+<!-- FontAwesome -->
+<link rel="stylesheet" href="{% static 'fontawesome/css/all.min.css' %}">
+
+<title>Verificación OTP</title>
+
+<style>
+    body {
+        background: linear-gradient(135deg, #0d6efd 0%, #0dcaf0 100%);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        height: 100vh;
+        margin: 0;
+    }
+
+    .card-otp {
+        width: 100%;
+        max-width: 420px;
+        padding: 2.5rem;
+        border-radius: 15px;
+        box-shadow: 0 10px 25px rgba(0,0,0,0.2);
+        background: white;
+        text-align: center;
+    }
+
+    .icono {
+        font-size: 3.5rem;
+        color: #0d6efd;
+        margin-bottom: 1rem;
+    }
+
+    .qr-img {
+        margin: 20px 0;
+        padding: 10px;
+        border-radius: 10px;
+        background: #f8f9fa;
+        display: inline-block;
+    }
+</style>
+
+
+</head>
+
+<body>
+
+<div class="card-otp">
+
+
+<div class="icono">
+    <i class="fas fa-qrcode"></i>
+</div>
+
+<h3 class="fw-bold text-primary mb-2">Verificación en dos pasos</h3>
+<p class="text-muted mb-3">
+    Escanea este código con <strong>Google Authenticator</strong> o cualquier app compatible
+</p>
+
+<div class="qr-img">
+    <img src="https://api.qrserver.com/v1/create-qr-code/?size=200x200&data={{ uri }}" alt="QR OTP">
+</div>
+
+<p class="text-muted small mb-4">
+    Luego ingresa el código de 6 dígitos que se genera cada 30 segundos
+</p>
+
+<div class="d-grid">
+    <a href="{% url 'verificar_otp' %}" class="btn btn-primary btn-lg fw-bold">
+        <i class="fas fa-arrow-right me-2"></i> Continuar
+    </a>
+</div>
+
+<div class="mt-3">
+    <a href="{% url 'login' %}" class="text-decoration-none text-muted small">
+        <i class="fas fa-arrow-left me-1"></i> Cancelar
+    </a>
+</div>
+
+
+</div>
+
+<script src="{% static 'bootstrap/js/bootstrap.bundle.min.js' %}"></script>
+
+</body>
+</html>

@@ -124,10 +124,3 @@ class DetalleFactura(models.Model):
     id_producto = models.ForeignKey(Productos, on_delete=models.CASCADE)
     Cantidad = models.IntegerField()
     Subtotal = models.DecimalField(max_digits=10, decimal_places=2)
-
-class UserOTP(models.Model):
-    user = models.OneToOneField(User, on_delete=models.CASCADE)
-    secret = models.CharField(max_length=32)
-
-    def __str__(self):
-        return f"OTP - {self.user.username}"

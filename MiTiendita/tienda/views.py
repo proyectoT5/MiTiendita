@@ -1256,4 +1256,3 @@ def reporte_pdf_view(request):
         return HttpResponse('Tuvimos errores <pre>' + html + '</pre>')
     return response
 
-#cambiar contraseña con codigo
