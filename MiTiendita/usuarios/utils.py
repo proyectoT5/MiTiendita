@@ -1,26 +1,21 @@
-import random
-from django.utils import timezone
-from datetime import timedelta
-from .models import UserOTP  # si lo creaste
 import pyotp
 
-def generar_otp(user):
+def generar_otp(request, user):
     secret = pyotp.random_base32()
-    user.profile.otp_secret = secret  # o donde lo estés guardando
-    user.profile.save()
+
+    # guardar en sesión (esto ya te funciona)
+    request.session['otp_secret'] = secret
+    request.session['user_id_temp'] = user.id
 
     totp = pyotp.TOTP(secret)
     uri = totp.provisioning_uri(name=user.username, issuer_name="MiTiendita")
 
     return uri
 
-
-def validar_otp(user, codigo):
-    try:
-        otp_obj = UserOTP.objects.get(user=user)
-
-        if otp_obj.codigo == codigo and otp_obj.expira > timezone.now():
-            return True
+def validar_otp(request, codigo):
+    secret = request.session.get('otp_secret')
+    if not secret:
         return False
-    except UserOTP.DoesNotExist:
-        return False
+
+    totp = pyotp.TOTP(secret)
+    return totp.verify(codigo)

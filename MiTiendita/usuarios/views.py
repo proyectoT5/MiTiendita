@@ -19,17 +19,16 @@ def login_sql_view(request):
 
         if user is not None:
             if user.is_active:
+                
+                # ✅ LOGIN NORMAL (como antes)
+                auth_login(request, user)
 
-                # 🔥 GENERAR OTP
-                generar_otp(user)
+                # compatibilidad con tu sistema actual
+                request.session['user_id'] = user.id
+                request.session['user_nombre'] = user.username
+                request.session['user_rol'] = 'Admin' if user.is_superuser else 'Vendedor'
 
-                # 🔥 GUARDAR USUARIO TEMPORAL
-                request.session['user_id_temp'] = user.id
-
-                # ❌ YA NO HACEMOS LOGIN AQUÍ
-                # auth_login(request, user)
-
-                return redirect('verificar_otp')
+                return redirect('dashboard')
 
             else:
                 messages.error(request, "Usuario desactivado.")
@@ -37,6 +36,8 @@ def login_sql_view(request):
             messages.error(request, "Usuario o contraseña incorrectos.")
             
     return render(request, 'usuarios/login.html')
+
+
 def logout_view(request):
     auth_logout(request) # Limpieza total de sesión
     try:
