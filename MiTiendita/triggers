@@ -1,0 +1,25 @@
+CREATE TRIGGER trg_descontar_stock
+AFTER INSERT ON DetalleFactura
+BEGIN
+    UPDATE Productos
+    SET Cantidad = Cantidad - NEW.Cantidad
+    WHERE Id_Producto = NEW.id_producto;
+END;
+    
+    
+CREATE TRIGGER trg_stock_no_negativo
+BEFORE UPDATE ON Productos
+WHEN NEW.Cantidad < 0
+BEGIN
+    SELECT RAISE(ABORT, 'Stock insuficiente');
+END;
+
+CREATE TRIGGER trg_no_eliminar_cliente_con_facturas
+BEFORE DELETE ON Clientes
+WHEN EXISTS (
+    SELECT 1 FROM Facturas
+    WHERE id_cliente = OLD.id_cliente
+)
+BEGIN
+    SELECT RAISE(ABORT, 'No se puede eliminar el cliente porque tiene facturas registradas');
+END;    
