@@ -132,9 +132,9 @@ LOGGING = {
 
     'loggers': {
         'django': {
-            'handlers': ['file'],
+            'handlers': [],
             'level': 'INFO',
-            'propagate': True,
+            'propagate': False,
         },
         'miapp': {  # nombre personalizado
             'handlers': ['file'],

@@ -7,6 +7,9 @@ from django.db.models import Q
 from .utils import validar_otp  # o donde pongas la lógica
 from .utils import generar_otp
 import pyotp
+import logging
+
+logger = logging.getLogger('miapp')
 # ==========================================
 #             LOGIN / LOGOUT
 # ==========================================
@@ -22,6 +25,7 @@ def login_sql_view(request):
                 
                 # ✅ LOGIN NORMAL (como antes)
                 auth_login(request, user)
+                logger.info(f"Inicio de sesión exitoso: {nombre}")
 
                 # compatibilidad con tu sistema actual
                 request.session['user_id'] = user.id
@@ -32,18 +36,24 @@ def login_sql_view(request):
 
             else:
                 messages.error(request, "Usuario desactivado.")
+                logger.warning(f"Usuario desactivado intentó login: {nombre}")
         else:
             messages.error(request, "Usuario o contraseña incorrectos.")
+            logger.error(f"Intento de login fallido: {nombre}")
             
     return render(request, 'usuarios/login.html')
 
 
 def logout_view(request):
+    if request.user.is_authenticated:
+        logger.info(f"Cierre de sesión: {request.user.username}")
+
     auth_logout(request) # Limpieza total de sesión
     try:
         del request.session['user_id']
         del request.session['user_nombre']
         del request.session['user_rol']
+       
     except KeyError:
         pass
     return redirect('login')
