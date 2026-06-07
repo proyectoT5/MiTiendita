@@ -74,7 +74,10 @@ urlpatterns = [
     path('deudores/pagar/<int:id_fact>/', views.pagar_deuda_view, name='pagar_deuda'),
     path('reportes/pdf/', views.reporte_pdf_view, name='reporte_pdf'),
 
-    #recuperacion de password
+    path('productos/guardar-borrador/', views.guardar_borrador_producto_view, name='guardar_borrador_producto'),
+
+    
+
     
 
 ]

@@ -264,7 +264,25 @@ def productos_view(request):
         'mostrando_desactivados': bool(mostrar_desactivados)
     }
     return render(request, 'tienda/productos.html', context)
+from django.http import JsonResponse
+import json
 
+# 1. NUEVA VISTA: Guarda el borrador en la sesión en tiempo real cada vez que escriben
+@login_requerido
+def guardar_borrador_producto_view(request):
+    if request.method == 'POST':
+        try:
+            datos = json.loads(request.body)
+            # Guardamos el diccionario completo del borrador en la sesión
+            request.session['borrador_producto'] = datos
+            request.session.modified = True
+            return JsonResponse({'status': 'ok'})
+        except Exception as e:
+            return JsonResponse({'status': 'error', 'message': str(e)}, status=400)
+    return JsonResponse({'status': 'invalid_method'}, status=405)
+
+
+# 2. VISTA ACTUALIZADA: Tu función con la carga e inyección del borrador
 @login_requerido
 def productos_agregar_view(request):
     if request.method == 'POST':
@@ -291,6 +309,7 @@ def productos_agregar_view(request):
 
                 prov_obj = None
                 if id_prov:
+                    # NOTA: Asegúrate si en tu modelo es id_proveedor o idproveedor
                     prov_obj = Proveedores.objects.get(pk=id_prov)
 
                 nuevo_prod = Productos.objects.create(
@@ -308,15 +327,26 @@ def productos_agregar_view(request):
                         activo=True
                     )
 
+            # ✅ ÉXITO: Como ya se guardó el producto real, eliminamos el borrador temporal de la sesión
+            if 'borrador_producto' in request.session:
+                del request.session['borrador_producto']
+
             messages.success(request, f"¡Producto '{nombre}' creado con éxito!")
             return redirect('productos_lista')
         except Exception as e:
             messages.error(request, f"Error al guardar: {e}")
 
+    # --- PROCESO PARA CARGAR EL BORRADOR (Si es un método GET) ---
     prov_objs = Proveedores.objects.filter(activo=True)
     proveedores = [{'id_Proveedor': p.id_proveedor, 'nombre_proveedor': p.nombre_proveedor} for p in prov_objs]
-    return render(request, 'tienda/productos_agregar.html', {'proveedores': proveedores})
+    
+    # Extraemos el borrador si existe en la sesión actual, si no, mandamos un diccionario vacío
+    borrador = request.session.get('borrador_producto', {})
 
+    return render(request, 'tienda/productos_agregar.html', {
+        'proveedores': proveedores,
+        'borrador': borrador  # ✅ Pasamos el borrador al HTML
+    })
 @admin_requerido
 def productos_editar_view(request, id_prod):
     producto = get_object_or_404(Productos, pk=id_prod)

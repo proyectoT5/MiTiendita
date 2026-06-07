@@ -10,7 +10,7 @@
         </div>
         <div class="card-body">
             
-            <form method="POST" enctype="multipart/form-data">
+            <form method="POST" id="form-producto" enctype="multipart/form-data">
                 {% csrf_token %}
 
                 <div class="row">
@@ -19,24 +19,24 @@
                         
                         <div class="mb-3">
                             <label class="form-label fw-bold">Nombre del Producto:</label>
-                            <input type="text" name="nombre" class="form-control form-control-lg" placeholder="Ej: Jabón de baño" required autofocus>
+                            <input type="text" name="nombre" class="form-control form-control-lg" placeholder="Ej: Jabón de baño" value="{{ borrador.nombre|default:'' }}" required autofocus>
                         </div>
 
                         <div class="row">
                             <div class="col-md-6 mb-3">
                                 <label class="form-label">Precio de Venta (C$):</label>
-                                <input type="number" step="0.01" name="precio_venta" class="form-control" placeholder="0.00" required>
+                                <input type="number" step="0.01" name="precio_venta" class="form-control" placeholder="0.00" value="{{ borrador.precio_venta|default:'' }}" required>
                             </div>
                             <div class="col-md-6 mb-3">
                                 <label class="form-label">Stock Inicial:</label>
-                                <input type="number" name="cantidad" class="form-control" placeholder="0" required>
+                                <input type="number" name="cantidad" class="form-control" placeholder="0" value="{{ borrador.cantidad|default:'' }}" required>
                             </div>
                         </div>
 
                         <div class="mb-3">
                             <label class="form-label">Foto del Producto:</label>
                             <input type="file" name="foto" class="form-control" accept="image/*">
-                            <small class="text-muted">Se verá en la facturación.</small>
+                            <small class="text-muted">Se verá en la facturación. (Las fotos no se pre-cargan por seguridad del navegador)</small>
                         </div>
                     </div>
 
@@ -46,27 +46,29 @@
                         <div class="mb-3">
                             <label class="form-label fw-bold">Proveedor:</label>
                             <select name="id_proveedor" class="form-select" required>
-                                <option value="" selected disabled>-- Selecciona un Proveedor --</option>
+                                <option value="" {% if not borrador.id_proveedor %}selected{% endif %} disabled>-- Selecciona un Proveedor --</option>
                                 {% for prov in proveedores %}
-                                    <option value="{{ prov.id_Proveedor }}">{{ prov.nombre_proveedor }}</option>
+                                    <option value="{{ prov.id_Proveedor }}" {% if borrador.id_proveedor == prov.id_Proveedor|slugify %}selected{% endif %}>
+                                        {{ prov.nombre_proveedor }}
+                                    </option>
                                 {% endfor %}
                             </select>
                         </div>
 
                         <div class="mb-3">
                             <label class="form-label">¿Cuántas unidades trae el paquete/caja?</label>
-                            <input type="number" name="cantidad_compra" class="form-control" placeholder="Ej: 12 (si es docena), 24, etc." value="1">
+                            <input type="number" name="cantidad_compra" class="form-control" placeholder="Ej: 12 (si es docena), 24, etc." value="{{ borrador.cantidad_compra|default:'1' }}">
                         </div>
 
                         <div class="mb-3">
                             <label class="form-label">Costo de Compra del Paquete (C$):</label>
-                            <input type="number" step="0.01" name="precio_compra" class="form-control" placeholder="0.00">
+                            <input type="number" step="0.01" name="precio_compra" class="form-control" placeholder="0.00" value="{{ borrador.precio_compra|default:'' }}">
                             <small class="text-muted">Precio al que te lo da el proveedor.</small>
                         </div>
 
                         <div class="mb-3">
                             <label class="form-label text-danger">Stock Mínimo (Alerta):</label>
-                            <input type="number" name="stock_min" class="form-control" value="5">
+                            <input type="number" name="stock_min" class="form-control" value="{{ borrador.stock_min|default:'5' }}">
                         </div>
                     </div>
                 </div>
@@ -84,5 +86,38 @@
         </div>
     </div>
 </div>
+
+<script>
+    const formulario = document.getElementById('form-producto');
+    
+    // Escuchamos los cambios en cualquier input o select del formulario
+    formulario.addEventListener('input', () => {
+        // Obtenemos los valores actuales escritos por el usuario
+        const datosBorrador = {
+            nombre: formulario.querySelector('[name="nombre"]').value,
+            precio_venta: formulario.querySelector('[name="precio_venta"]').value,
+            cantidad: formulario.querySelector('[name="cantidad"]').value,
+            id_proveedor: formulario.querySelector('[name="id_proveedor"]').value,
+            cantidad_compra: formulario.querySelector('[name="cantidad_compra"]').value,
+            precio_compra: formulario.querySelector('[name="precio_compra"]').value,
+            stock_min: formulario.querySelector('[name="stock_min"]').value,
+        };
+
+        // Enviamos los datos en segundo plano a Django usando Fetch API
+        fetch("{% url 'guardar_borrador_producto' %}", {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                "X-CSRFToken": "{{ csrf_token }}" // Requerido por la seguridad de Django
+            },
+            body: JSON.stringify(datosBorrador)
+        })
+        .then(response => response.json())
+        .then(data => {
+            console.log("Borrador actualizado...");
+        })
+        .catch(error => console.error("Error guardando borrador:", error));
+    });
+</script>
 
 {% endblock %}
