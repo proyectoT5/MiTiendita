@@ -493,25 +493,49 @@ def clientes_view(request):
     context = {'nombre_usuario': request.session.get('user_nombre'), 'rol_usuario': request.session.get('user_rol'), 'clientes': clientes_list, 'search_query': search_query, 'mostrando_desactivados': bool(mostrar_desactivados)}
     return render(request, 'tienda/clientes.html', context)
 
+import re  # 🛡️ Asegúrate de tener este import al inicio de tu views.py
+
+@login_requerido
 def clientes_agregar_view(request):
     if request.method == 'POST':
-        nom = request.POST.get('nombre')
-        ape = request.POST.get('apellido')
-        cor = request.POST.get('correo')
+        nom = request.POST.get('nombre', '').strip()
+        ape = request.POST.get('apellido', '').strip()
+        cor = request.POST.get('correo', '').strip()
         tel1 = request.POST.get('tel1', '').replace('-', '')
         tel2 = request.POST.get('tel2', '').replace('-', '')
+        
+        # Expresión regular: Solo letras de la A a la Z (mayúsculas/minúsculas), acentos, Ñ y espacios.
+        patron_letras = r'^[a-zA-ZáéíóúÁÉÍÓÚñÑ\s]+$'
+        
+        # 1. Validar Nombre (Obligatorio)
+        if not nom or not re.match(patron_letras, nom):
+            messages.error(request, "⚠️ El nombre solo puede contener letras y espacios.")
+            return render(request, 'tienda/clientes_agregar.html', {
+                'nom': nom, 'ape': ape, 'cor': cor, 'tel1': request.POST.get('tel1'), 'tel2': request.POST.get('tel2')
+            })
+            
+        # 2. Validar Apellido (Solo si escribieron algo, ya que puede ser opcional)
+        if ape and not re.match(patron_letras, ape):
+            messages.error(request, "⚠️ El apellido solo puede contener letras y espacios.")
+            return render(request, 'tienda/clientes_agregar.html', {
+                'nom': nom, 'ape': ape, 'cor': cor, 'tel1': request.POST.get('tel1'), 'tel2': request.POST.get('tel2')
+            })
+
         try:
             with transaction.atomic():
                 ultimo = Clientes.objects.aggregate(Max('id_cliente'))['id_cliente__max']
                 nuevo_id = 1 if ultimo is None else ultimo + 1
                 nuevo_cli = Clientes.objects.create(id_cliente=nuevo_id, nombre=nom, apellido=ape, correo=cor, activo=True, esocasional=False)
+                
                 if tel1: ClienteTelefono.objects.create(id_cliente=nuevo_cli, numero_telefono_c=tel1)
                 if tel2: ClienteTelefono.objects.create(id_cliente=nuevo_cli, numero_telefono_c=tel2)
+                
             messages.success(request, f"Cliente guardado con éxito.")
             return redirect('clientes_lista')
-        except Exception as e: messages.error(request, f"Error: {e}")
+        except Exception as e: 
+            messages.error(request, f"Error: {e}")
+            
     return render(request, 'tienda/clientes_agregar.html')
-
 @admin_requerido
 def clientes_eliminar_view(request, id_cli):
     try:

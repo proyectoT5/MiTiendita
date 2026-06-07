@@ -7,6 +7,15 @@
         <div class="col-md-10">
             <h2 class="mb-4 fw-bold">Agregar Nuevo Cliente</h2>
             
+            {% if messages %}
+                {% for message in messages %}
+                    <div class="alert alert-{% if message.tags == 'error' %}danger{% else %}{{ message.tags }}{% endif %} alert-dismissible fade show" role="alert">
+                        {{ message }}
+                        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                    </div>
+                {% endfor %}
+            {% endif %}
+            
             <div class="card shadow-sm border-0 card-custom" style="border-radius: 15px;">
                 <div class="card-body p-5">
                     <form method="POST">
@@ -14,27 +23,27 @@
                         <div class="row">
                             <div class="col-md-6 mb-4">
                                 <label class="form-label fw-bold">Nombre</label>
-                                <input type="text" name="nombre" class="form-control form-control-lg border-0 shadow-sm" required style="border-radius: 10px;">
+                                <input type="text" name="nombre" value="{{ nom|default:'' }}" class="form-control form-control-lg border-0 shadow-sm input-letras-only" pattern="[a-zA-ZáéíóúÁÉÍÓÚñÑ\s]+" title="Solo se permiten letras y espacios." required style="border-radius: 10px;">
                             </div>
                             <div class="col-md-6 mb-4">
                                 <label class="form-label fw-bold">Apellido</label>
-                                <input type="text" name="apellido" class="form-control form-control-lg border-0 shadow-sm" style="border-radius: 10px;">
+                                <input type="text" name="apellido" value="{{ ape|default:'' }}" class="form-control form-control-lg border-0 shadow-sm input-letras-only" pattern="[a-zA-ZáéíóúÁÉÍÓÚñÑ\s]+" title="Solo se permiten letras y espacios." style="border-radius: 10px;">
                             </div>
                             <div class="col-md-12 mb-4">
                                 <label class="form-label fw-bold">Correo (Opcional)</label>
-                                <input type="email" name="correo" class="form-control form-control-lg border-0 shadow-sm" placeholder="ejemplo@correo.com" style="border-radius: 10px;">
+                                <input type="email" name="correo" value="{{ cor|default:'' }}" class="form-control form-control-lg border-0 shadow-sm" placeholder="ejemplo@correo.com" style="border-radius: 10px;">
                             </div>
                             <div class="col-md-6 mb-4">
                                 <label class="form-label fw-bold">Teléfono Principal</label>
-                                <input type="text" name="tel1" class="form-control form-control-lg border-0 shadow-sm input-tel-cliente" placeholder="0000-0000" maxlength="9" style="border-radius: 10px;">
+                                <input type="text" name="tel1" value="{{ tel1|default:'' }}" class="form-control form-control-lg border-0 shadow-sm input-tel-cliente" placeholder="0000-0000" maxlength="9" style="border-radius: 10px;">
                             </div>
                             <div class="col-md-6 mb-4">
                                 <label class="form-label fw-bold text-muted">Teléfono Secundario</label>
-                                <input type="text" name="tel2" class="form-control form-control-lg border-0 shadow-sm input-tel-cliente" placeholder="Opcional" maxlength="9" style="border-radius: 10px;">
+                                <input type="text" name="tel2" value="{{ tel2|default:'' }}" class="form-control form-control-lg border-0 shadow-sm input-tel-cliente" placeholder="Opcional" maxlength="9" style="border-radius: 10px;">
                             </div>
                         </div>
                         <div class="d-flex justify-content-end mt-3 gap-2">
-                            <a href="{% url 'clientes_lista' %}" class="btn btn-secondary btn-lg px-4" style="border-radius: 10px;">Cancelar</a>
+                            <a href="{% url 'clientes_lista' %}" class="btn btn-secondary btn-lg px-4" style="border-radius: 10px;">Cancelación</a>
                             <button type="submit" class="btn btn-primary btn-lg px-4" style="border-radius: 10px;">Guardar Cliente</button>
                         </div>
                     </form>
@@ -45,11 +54,24 @@
 </div>
 
 <script>
-    // Script para poner el guion automático en Clientes
+    // 1. Script original para poner el guion automático en teléfonos
     document.querySelectorAll('.input-tel-cliente').forEach(function(el) {
         el.addEventListener('input', function (e) {
             let x = e.target.value.replace(/\D/g, '').match(/(\d{0,4})(\d{0,4})/);
             e.target.value = !x[2] ? x[1] : x[1] + '-' + x[2];
+        });
+    });
+
+    // 2. NUEVO: Bloquear números y símbolos en Nombre y Apellido mientras escriben
+    document.querySelectorAll('.input-letras-only').forEach(function(el) {
+        el.addEventListener('keypress', function(e) {
+            // Expresión regular que valida letras, letras con tildes, Ñ y espacios
+            const regex = /^[a-zA-ZáéíóúÁÉÍÓÚñÑ\s]$/;
+            
+            // Si la tecla presionada no hace match con el patrón, cancelamos el evento
+            if (!regex.test(e.key)) {
+                e.preventDefault();
+            }
         });
     });
 </script>
