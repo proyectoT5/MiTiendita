@@ -1,96 +1,88 @@
 {% load static %}
 <!DOCTYPE html>
-
 <html lang="es">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-
-
-<!-- Bootstrap -->
-<link rel="stylesheet" href="{% static 'bootstrap/css/bootstrap.min.css' %}">
-
-<!-- FontAwesome -->
-<link rel="stylesheet" href="{% static 'fontawesome/css/all.min.css' %}">
-
-<title>Verificación OTP</title>
-
-<style>
-    body {
-        background: linear-gradient(135deg, #0d6efd 0%, #0dcaf0 100%);
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        height: 100vh;
-        margin: 0;
-    }
-
-    .card-otp {
-        width: 100%;
-        max-width: 420px;
-        padding: 2.5rem;
-        border-radius: 15px;
-        box-shadow: 0 10px 25px rgba(0,0,0,0.2);
-        background: white;
-        text-align: center;
-    }
-
-    .icono {
-        font-size: 3.5rem;
-        color: #0d6efd;
-        margin-bottom: 1rem;
-    }
-
-    .qr-img {
-        margin: 20px 0;
-        padding: 10px;
-        border-radius: 10px;
-        background: #f8f9fa;
-        display: inline-block;
-    }
-</style>
-
-
+    <link rel="stylesheet" href="{% static 'bootstrap/css/bootstrap.min.css' %}">
+    <link rel="stylesheet" href="{% static 'fontawesome/css/all.min.css' %}">
+    <title>Verificación OTP</title>
+    <style>
+        body {
+            background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            margin: 0;
+            font-family: 'Poppins', sans-serif;
+        }
+        .card-otp {
+            width: 100%;
+            max-width: 420px;
+            padding: 2.5rem;
+            border-radius: 15px;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.3);
+            background: white;
+            text-align: center;
+        }
+        .icono { font-size: 3.5rem; color: #1e3c72; margin-bottom: 1rem; }
+        .qr-img {
+            margin: 15px 0;
+            padding: 10px;
+            border-radius: 10px;
+            background: #f8f9fa;
+            display: inline-block;
+            border: 1px solid #dee2e6;
+        }
+    </style>
 </head>
-
 <body>
 
 <div class="card-otp">
+    <div class="icono"><i class="fas fa-shield-alt"></i></div>
+    <h3 class="fw-bold text-primary mb-2">Código de Seguridad</h3>
+    <p class="text-muted small mb-3">
+        Si es tu primera vez, escanea el QR con tu app autenticadora. Si ya lo tienes registrado, solo ingresa tu código de 6 dígitos actual.
+    </p>
 
+    <div class="qr-img">
+        <img src="https://api.qrserver.com/v1/create-qr-code/?size=200x200&data={{ uri }}" alt="QR OTP">
+    </div>
 
-<div class="icono">
-    <i class="fas fa-qrcode"></i>
-</div>
+    {% if messages %}
+        {% for message in messages %}
+            <div class="alert alert-danger alert-dismissible fade show text-start small p-2" role="alert">
+                <i class="fas fa-exclamation-circle me-1"></i> {{ message }}
+                <button type="button" class="btn-close p-2" data-bs-dismiss="alert"></button>
+            </div>
+        {% endfor %}
+    {% endif %}
 
-<h3 class="fw-bold text-primary mb-2">Verificación en dos pasos</h3>
-<p class="text-muted mb-3">
-    Escanea este código con <strong>Google Authenticator</strong> o cualquier app compatible
-</p>
+    <form method="POST" action="{% url 'verificar_otp' %}" class="text-start mt-2">
+        {% csrf_token %}
+        <div class="mb-3">
+            <label class="form-label fw-bold small text-muted">Código de Autenticación</label>
+            <div class="input-group">
+                <span class="input-group-text"><i class="fas fa-key text-muted"></i></span>
+                <input type="text" name="otp" class="form-control text-center fw-bold fs-5" placeholder="000000" maxlength="6" pattern="\d{6}" inputmode="numeric" autocomplete="one-time-code" required autofocus>
+            </div>
+        </div>
 
-<div class="qr-img">
-    <img src="https://api.qrserver.com/v1/create-qr-code/?size=200x200&data={{ uri }}" alt="QR OTP">
-</div>
+        <div class="d-grid">
+            <button type="submit" class="btn btn-primary btn-lg fw-bold" style="background: #1e3c72; border: none;">
+                <i class="fas fa-sign-in-alt me-2"></i> Verificar y Entrar
+            </button>
+        </div>
+    </form>
 
-<p class="text-muted small mb-4">
-    Luego ingresa el código de 6 dígitos que se genera cada 30 segundos
-</p>
-
-<div class="d-grid">
-    <a href="{% url 'verificar_otp' %}" class="btn btn-primary btn-lg fw-bold">
-        <i class="fas fa-arrow-right me-2"></i> Continuar
-    </a>
-</div>
-
-<div class="mt-3">
-    <a href="{% url 'login' %}" class="text-decoration-none text-muted small">
-        <i class="fas fa-arrow-left me-1"></i> Cancelar
-    </a>
-</div>
-
-
+    <div class="mt-3">
+        <a href="{% url 'login' %}" class="text-decoration-none text-muted small">
+            <i class="fas fa-arrow-left me-1"></i> Cancelar
+        </a>
+    </div>
 </div>
 
 <script src="{% static 'bootstrap/js/bootstrap.bundle.min.js' %}"></script>
-
 </body>
 </html>

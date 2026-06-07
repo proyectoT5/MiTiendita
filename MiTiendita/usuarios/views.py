@@ -215,7 +215,26 @@ def usuarios_reactivar_view(request, id_usuario):
         messages.error(request, "Usuario no encontrado.")
     return redirect('usuarios_lista')
 
-#cambiar contraseña con codigo
+# ==========================================
+#         SISTEMA DE AUTENTICACIÓN OTP
+# ==========================================
+import base64
+import hashlib
+
+def obtener_secreto_persistente_usuario(user):
+    """
+    Genera una llave secreta en Base32 única para cada usuario.
+    No cambia entre intentos de recuperación, lo que evita que el QR se desfase
+    con la aplicación de Google Authenticator.
+    """
+    # Creamos un hash único usando el ID del usuario y su fecha de registro o username
+    semilla = f"MiTienditaSecret-{user.id}-{user.username}"
+    hash_bytes = hashlib.sha256(semilla.encode('utf-8')).digest()
+    
+    # pyotp necesita una cadena en Base32 (letras de la A a la Z y números del 2 al 7)
+    secreto_b32 = base64.b32encode(hash_bytes).decode('utf-8').replace('=', '')[:32]
+    return secreto_b32
+
 def recuperar_password_view(request):
     if request.method == 'POST':
         username = request.POST.get('username')
@@ -223,36 +242,43 @@ def recuperar_password_view(request):
         try:
             user = User.objects.get(username=username)
         except User.DoesNotExist:
-            messages.error(request, "Usuario no encontrado")
-            return redirect('usuarios/recuperar_password')
+            messages.error(request, "El usuario ingresado no existe.")
+            return render(request, 'usuarios/recuperar_password.html')
 
-        secret = pyotp.random_base32()
+        # ✅ CORREGIDO: En lugar de random_base32(), usamos una llave fija por usuario
+        secret = obtener_secreto_persistente_usuario(user)
 
+        # Guardamos en la sesión para la verificación posterior
         request.session['otp_secret'] = secret
         request.session['user_id_temp'] = user.id
+        request.session.modified = True
 
         totp = pyotp.TOTP(secret)
         uri = totp.provisioning_uri(name=user.username, issuer_name="MiTiendita")
 
         return render(request, 'usuarios/otp_qr.html', {'uri': uri})
 
-    # 👇 ESTE es el correcto
     return render(request, 'usuarios/recuperar_password.html')
+
 
 def validar_otp(request, codigo):
     secret = request.session.get('otp_secret')
     if not secret:
         return False
-
+    
     totp = pyotp.TOTP(secret)
-    return totp.verify(codigo)
+    # Agregamos una ventana de tolerancia de 1 paso (30 segundos antes/después) 
+    # por si el reloj del celular del usuario está ligeramente desincronizado
+    return totp.verify(codigo, valid_window=1)
+
 
 def verificar_otp_view(request):
     if request.method == 'POST':
-        codigo = request.POST.get('otp')  # 👈 debe coincidir con el input HTML
+        codigo = request.POST.get('otp')
         user_id = request.session.get('user_id_temp')
 
         if not user_id:
+            messages.error(request, "La sesión de verificación expiró. Inicia de nuevo.")
             return redirect('login')
 
         try:
@@ -261,21 +287,28 @@ def verificar_otp_view(request):
             return redirect('login')
 
         if validar_otp(request, codigo):
-            
-            # 🔥 LOGIN AUTOMÁTICO
+            # ✅ LOGIN AUTOMÁTICO COMPATIBLE
             auth_login(request, user)
 
-            # compatibilidad con tu sistema actual
             request.session['user_id'] = user.id
             request.session['user_nombre'] = user.username
             request.session['user_rol'] = 'Admin' if user.is_superuser else 'Vendedor'
 
-            # limpiar sesión temporal
-            del request.session['user_id_temp']
-            del request.session['otp_secret']
+            try:
+                del request.session['user_id_temp']
+                del request.session['otp_secret']
+            except KeyError:
+                pass
 
+            messages.success(request, f"¡Bienvenido, {user.username}!")
             return redirect('dashboard')
         else:
-            messages.error(request, "Código OTP inválido")
+            messages.error(request, "Código OTP inválido. Verifica tu aplicación.")
+            
+            # Re-renderizamos manteniendo la consistencia de la URI
+            secret = request.session.get('otp_secret')
+            totp = pyotp.TOTP(secret)
+            uri = totp.provisioning_uri(name=user.username, issuer_name="MiTiendita")
+            return render(request, 'usuarios/otp_qr.html', {'uri': uri})
 
-    return render(request, 'usuarios/verificar_otp.html')
+    return redirect('login')
