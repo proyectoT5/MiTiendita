@@ -214,7 +214,6 @@ def usuarios_reactivar_view(request, id_usuario):
     except User.DoesNotExist:
         messages.error(request, "Usuario no encontrado.")
     return redirect('usuarios_lista')
-
 # ==========================================
 #         SISTEMA DE AUTENTICACIÓN OTP
 # ==========================================
@@ -222,16 +221,8 @@ import base64
 import hashlib
 
 def obtener_secreto_persistente_usuario(user):
-    """
-    Genera una llave secreta en Base32 única para cada usuario.
-    No cambia entre intentos de recuperación, lo que evita que el QR se desfase
-    con la aplicación de Google Authenticator.
-    """
-    # Creamos un hash único usando el ID del usuario y su fecha de registro o username
     semilla = f"MiTienditaSecret-{user.id}-{user.username}"
     hash_bytes = hashlib.sha256(semilla.encode('utf-8')).digest()
-    
-    # pyotp necesita una cadena en Base32 (letras de la A a la Z y números del 2 al 7)
     secreto_b32 = base64.b32encode(hash_bytes).decode('utf-8').replace('=', '')[:32]
     return secreto_b32
 
@@ -245,10 +236,8 @@ def recuperar_password_view(request):
             messages.error(request, "El usuario ingresado no existe.")
             return render(request, 'usuarios/recuperar_password.html')
 
-        # ✅ CORREGIDO: En lugar de random_base32(), usamos una llave fija por usuario
         secret = obtener_secreto_persistente_usuario(user)
 
-        # Guardamos en la sesión para la verificación posterior
         request.session['otp_secret'] = secret
         request.session['user_id_temp'] = user.id
         request.session.modified = True
@@ -267,8 +256,6 @@ def validar_otp(request, codigo):
         return False
     
     totp = pyotp.TOTP(secret)
-    # Agregamos una ventana de tolerancia de 1 paso (30 segundos antes/después) 
-    # por si el reloj del celular del usuario está ligeramente desincronizado
     return totp.verify(codigo, valid_window=1)
 
 
@@ -287,28 +274,74 @@ def verificar_otp_view(request):
             return redirect('login')
 
         if validar_otp(request, codigo):
-            # ✅ LOGIN AUTOMÁTICO COMPATIBLE
-            auth_login(request, user)
-
-            request.session['user_id'] = user.id
-            request.session['user_nombre'] = user.username
-            request.session['user_rol'] = 'Admin' if user.is_superuser else 'Vendedor'
-
-            try:
-                del request.session['user_id_temp']
-                del request.session['otp_secret']
-            except KeyError:
-                pass
-
-            messages.success(request, f"¡Bienvenido, {user.username}!")
-            return redirect('dashboard')
-        else:
-            messages.error(request, "Código OTP inválido. Verifica tu aplicación.")
+            # ✅ CAMBIO CLAVE: En lugar de loguear de un solo, otorgamos un pase seguro en sesión
+            request.session['otp_verificado_exitoso'] = True
+            request.session.modified = True
             
-            # Re-renderizamos manteniendo la consistencia de la URI
+            # Limpiamos solo el secreto temporal usado
+            if 'otp_secret' in request.session:
+                del request.session['otp_secret']
+
+            # Redirigimos a la pantalla de reestablecer contraseña
+            return redirect('restablecer_password')
+        else:
+            messages.error(request, "Código OTP inválido o expirado. Verifica tu aplicación.")
+            
             secret = request.session.get('otp_secret')
             totp = pyotp.TOTP(secret)
             uri = totp.provisioning_uri(name=user.username, issuer_name="MiTiendita")
             return render(request, 'usuarios/otp_qr.html', {'uri': uri})
 
     return redirect('login')
+
+
+# NUEVA VISTA PARA ANEXAR AL FLUJO
+def restablecer_password_view(request):
+    # Control de seguridad estricto: Si no ha validado el OTP previamente, patitas a la calle
+    if not request.session.get('otp_verificado_exitoso') or not request.session.get('user_id_temp'):
+        messages.error(request, "Acceso no autorizado. Debes verificar el código OTP primero.")
+        return redirect('login')
+
+    user_id = request.session.get('user_id_temp')
+    user = get_object_or_404(User, id=user_id)
+
+    if request.method == 'POST':
+        nueva_pass = request.POST.get('nueva_password')
+        confirm_pass = request.POST.get('confirmar_password')
+
+        if nueva_pass != confirm_pass:
+            messages.error(request, "Las contraseñas no coinciden.")
+            return render(request, 'usuarios/restablecer_password.html', {'username': user.username})
+
+        if len(nueva_pass.strip()) < 4:  # Puedes subir esto si quieres más complejidad
+            messages.error(request, "La contraseña debe tener al menos 4 caracteres.")
+            return render(request, 'usuarios/restablecer_password.html', {'username': user.username})
+
+        try:
+            # 1. Actualizamos la clave del usuario de forma encriptada nativa
+            user.set_password(nueva_pass)
+            user.save()
+
+            # 2. Hacemos el inicio de sesión automático por comodidad
+            auth_login(request, user)
+
+            # 3. Mantenemos compatibilidad con las variables globales de tu Navbar y Sistema
+            request.session['user_id'] = user.id
+            request.session['user_nombre'] = user.username
+            request.session['user_role_compatible'] = 'Admin' if user.is_superuser else 'Vendedor' # Ajustado a tu convención de roles
+            request.session['user_rol'] = 'Admin' if user.is_superuser else 'Vendedor'
+
+            # 4. Limpieza total de los rastros temporales del proceso de recuperación
+            try:
+                del request.session['user_id_temp']
+                del request.session['otp_verificado_exitoso']
+            except KeyError:
+                pass
+
+            messages.success(request, "¡Contraseña actualizada e inicio de sesión exitoso!")
+            return redirect('dashboard')
+
+        except Exception as e:
+            messages.error(request, f"Error al restablecer la contraseña: {e}")
+
+    return render(request, 'usuarios/restablecer_password.html', {'username': user.username})
