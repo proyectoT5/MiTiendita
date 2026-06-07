@@ -834,36 +834,51 @@ def facturacion_guardar_view(request):
             pago_cliente = float(request.POST.get('pago_cliente') or 0)
             costo_envio = float(request.POST.get('costo_envio') or 0)
 
-            # --- NUEVO: CHECKBOX DE FIADO ---
+            # --- CHECKBOX DE FIADO ---
             es_fiado = request.POST.get('es_fiado') == 'on'
             # -------------------------------
 
             total_venta = sum(float(item['subtotal']) for item in carrito.values())
             total_final = total_venta + costo_envio
 
-            # Si es fiado, no validamos el pago del cliente
+            # 🛡️ 1. BLINDAJE ASIGNACIÓN CLIENTE GENERAL (ID = 1)
+            # Si el ID viene vacío, nulo, espacios, o es "0" (Público General en el HTML)
+            if not id_cli or id_cli.strip() == "" or id_cli == "0":
+                cliente_obj = Clientes.objects.filter(pk=1).first()
+                if not cliente_obj:
+                    cliente_obj = Clientes.objects.create(
+                        id_cliente=1, 
+                        nombre="Público", 
+                        apellido="General", 
+                        activo=True, 
+                        esocasional=True
+                    )
+            else:
+                # Si viene un ID real, buscamos al cliente seleccionado de forma segura
+                cliente_obj = get_object_or_404(Clientes, id_cliente=id_cli)
+
+            # 🛑 2. CONTROL DE SEGURIDAD PARA DEUDAS Y FIADOS
+            # Si el cliente es el comodín (Público General ID=1) y marcaron fiado, bloqueamos la venta
+            if cliente_obj.id_cliente == 1 and es_fiado:
+                messages.error(request, "❌ Error: No se pueden registrar ventas al crédito (Fiados) a 'Público General'. Por favor, selecciona un cliente real para guardar la deuda.")
+                return redirect('facturacion_view')
+
+            # Si NO es fiado, validamos que el pago del cliente sea suficiente
             if not es_fiado and pago_cliente < total_final:
                  messages.error(request, f"⚠️ El pago es insuficiente. Faltan C$ {total_final - pago_cliente}")
                  return redirect('facturacion_view')
 
-            # (El resto del código de Cliente sigue igual...)
-            if not id_cli:
-                cliente_obj = Clientes.objects.filter(pk=1).first()
-                if not cliente_obj:
-                    cliente_obj = Clientes.objects.create(id_cliente=1, nombre="Cliente", apellido="General", activo=True, esocasional=True)
-            else:
-                cliente_obj = get_object_or_404(Clientes, id_cliente=id_cli)
-
+            # 3. TRANSACCIÓN ATÓMICA REPARADA Y SEGURA
             with transaction.atomic():
                 nueva_factura = Facturas.objects.create(
-                    cliente=cliente_obj,
+                    cliente=cliente_obj,      # Asignación segura garantizada
                     Total=total_final,
                     CostoEnvio=costo_envio,
                     anulada=False,
-                    en_deuda=es_fiado  # <--- GUARDAMOS SI ES DEUDA
+                    en_deuda=es_fiado         # Guardará True únicamente si es un cliente real
                 )
 
-                # (El bucle for de los productos sigue igual...)
+                # Procesamos el bucle de productos del carrito
                 for key, item in carrito.items():
                     prod_obj = get_object_or_404(Productos, id_producto=item['id'])
                     cantidad = int(item['cantidad'])
@@ -881,13 +896,14 @@ def facturacion_guardar_view(request):
                     prod_obj.cantidad -= cantidad
                     prod_obj.save()
 
+            # Limpieza del carrito tras éxito
             request.session['carrito'] = {}
             request.session.modified = True
 
             if es_fiado:
                 messages.warning(request, "⚠️ Venta registrada como DEUDA (Fiado).")
             else:
-                messages.success(request, "✅ Venta registrada.")
+                messages.success(request, "✅ Venta registrada con éxito.")
 
             return redirect('factura_recibo', id_fact=nueva_factura.id_factura)
 
@@ -896,7 +912,6 @@ def facturacion_guardar_view(request):
             return redirect('facturacion_view')
 
     return redirect('facturacion_view')
-
 @login_requerido
 def facturacion_agregar_item(request):
     if request.method == 'POST':
