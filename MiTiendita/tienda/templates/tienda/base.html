@@ -75,13 +75,13 @@
         {% endif %}
     </div>
 
-    <nav class="navbar navbar-expand-lg navbar-dark fixed-top">
+    <nav class="navbar navbar-expand-xl navbar-dark fixed-top">
         <div class="container-fluid">
             <a class="navbar-brand text-white" href="{% url 'dashboard' %}"><i class="fas fa-store me-2"></i> Mi Tiendita</a>
             
             <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarMain"><span class="navbar-toggler-icon"></span></button>
             <div class="collapse navbar-collapse" id="navbarMain">
-                <ul class="navbar-nav me-auto mb-2 mb-lg-0 align-items-lg-center">
+                <ul class="navbar-nav me-auto mb-2 mb-xl-0 align-items-xl-center">
                     
                     <li class="nav-item"><a class="nav-link" href="{% url 'productos_lista' %}"><i class="fas fa-box-open"></i> Productos</a></li>
                     
@@ -109,7 +109,7 @@
                         </a>
                     </li>
                     
-                    <li class="nav-item mx-lg-1">
+                    <li class="nav-item mx-xl-1">
                         <a class="nav-link fw-bold" href="{% url 'facturacion_view' %}">
                             <i class="fas fa-file-invoice-dollar"></i> FACTURAR
                         </a>
@@ -122,20 +122,36 @@
                     </li>
                     
                     {% if request.session.user_rol == 'Admin' %}
-                        <li class="nav-item ms-lg-1"><a class="nav-link" href="{% url 'usuarios_lista' %}"><i class="fas fa-user-cog"></i> Usuarios</a></li>
+                        <li class="nav-item ms-xl-1"><a class="nav-link" href="{% url 'usuarios_lista' %}"><i class="fas fa-user-cog"></i> Usuarios</a></li>
                         
                         <li class="nav-item"><a class="nav-link" href="{% url 'proveedor_producto_lista' %}"><i class="fas fa-tags"></i> Costos</a></li>
                     {% endif %}
                 </ul>
                 
-                <div class="d-flex align-items-center text-white">
-                    <button class="btn btn-outline-light btn-sm me-3 border-0" id="darkModeToggle" title="Modo Oscuro">
-                        <i class="fas fa-moon"></i>
+                <div class="dropdown ms-auto mt-2 mt-xl-0">
+                    <button class="btn btn-link text-white text-decoration-none dropdown-toggle d-flex align-items-center p-0 border-0" type="button" id="userMenuDropdown" data-bs-toggle="dropdown" aria-expanded="false">
+                        <div class="me-2 text-end lh-1">
+                            <div class="fw-bold">{{ request.session.user_nombre }}</div>
+                            <small class="text-white-50" style="font-size: 0.75rem;">{{ request.session.user_rol }}</small>
+                        </div>
                     </button>
-                    <div class="me-3 text-end lh-1"><div class="fw-bold">{{ request.session.user_nombre }}</div><small class="text-white-50">{{ request.session.user_rol }}</small></div>
-                    <a href="{% url 'logout' %}" class="btn btn-danger btn-sm"><i class="fas fa-sign-out-alt"></i></a>
+                    
+                    <ul class="dropdown-menu dropdown-menu-end shadow border-0 mt-2" aria-labelledby="userMenuDropdown" style="border-radius: 10px;">
+                        <li>
+                            <button class="dropdown-item d-flex align-items-center justify-content-between py-2" id="darkModeToggle" type="button">
+                                <span><i class="fas fa-moon me-2 text-muted"></i> Tema</span>
+                                <small class="text-secondary" id="themeStatus">Claro</small>
+                            </button>
+                        </li>
+                        <li><hr class="dropdown-divider"></li>
+                        <li>
+                            <a href="{% url 'logout' %}" class="dropdown-item text-danger d-flex align-items-center py-2 fw-bold">
+                                <i class="fas fa-sign-out-alt me-2"></i> Cerrar Sesión
+                            </a>
+                        </li>
+                    </ul>
                 </div>
-            </div>
+                </div>
         </div>
     </nav>
 
