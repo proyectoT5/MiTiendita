@@ -10,57 +10,56 @@
         <i class="fas fa-user-tag me-2"></i> Tu rol actual es: <strong>{{ rol_usuario }}</strong>
     </div>
 
-    {% if productos_bajos %}
+    {% if productos_agotados %}
     <div class="card border-0 shadow mb-4 overflow-hidden">
         <div class="card-header bg-danger bg-gradient text-white py-3">
             <div class="d-flex justify-content-between align-items-center">
                 <h5 class="mb-0 fw-bold">
-                    <i class="fas fa-exclamation-circle fa-lg me-2"></i> Requieren Reabastecimiento
+                    <i class="fas fa-skull-crosswalk fa-lg me-2"></i> ¡PRODUCTOS AGOTADOS - REQUIEREN ACCIÓN INMEDIATA!
                 </h5>
-                <span class="badge bg-white text-danger rounded-pill">{{ productos_bajos|length }} Productos</span>
+                <span class="badge bg-white text-danger rounded-pill">{{ productos_agotados|length }} Productos</span>
             </div>
         </div>
         
         <div class="card-body p-0">
             <div class="table-responsive">
                 <table class="table table-hover align-middle mb-0">
-                    <thead class="bg-light-subtle text-uppercase small text-muted">
+                    <thead class="bg-danger-subtle text-uppercase small text-muted">
                         <tr>
-                            <th class="ps-4">Producto</th>
-                            <th class="text-center">Estado</th>
-                            <th class="text-center">Stock / Mínimo</th>
+                            <th class="ps-4">Nombre del Producto</th>
+                            <th class="text-center">Cantidad Actual</th>
+                            <th class="text-center">Stock Mínimo</th>
+                            <th class="text-center">Déficit</th>
                             <th class="text-end pe-4">Acción</th>
                         </tr>
                     </thead>
                     <tbody>
-                        {% for p in productos_bajos %}
+                        {% for p in productos_agotados %}
                         <tr>
                             <td class="ps-4">
                                 <div class="d-flex align-items-center">
-                                    <div class="bg-danger-subtle text-danger rounded p-2 me-3">
+                                    <div class="bg-danger text-white rounded p-2 me-3">
                                         <i class="fas fa-box-open"></i>
                                     </div>
                                     <div>
-                                        <h6 class="mb-0 fw-bold">{{ p.Nombre }}</h6>
-                                        <small class="text-danger fw-bold">¡Se agota!</small>
+                                        <h6 class="mb-0 fw-bold">{{ p.nombre }}</h6>
+                                        <small class="text-danger fw-bold">AGOTADO</small>
                                     </div>
                                 </div>
                             </td>
                             <td class="text-center">
-                                <div class="progress" style="height: 6px; width: 80px; margin: 0 auto;">
-                                    <div class="progress-bar bg-danger" role="progressbar" style="width: 20%;"></div>
-                                </div>
-                                <small class="text-muted" style="font-size: 0.75rem;">Crítico</small>
+                                <span class="badge bg-danger fs-6 p-2">0 unidades</span>
                             </td>
                             <td class="text-center">
-                                <span class="badge bg-danger fs-6">{{ p.Cantidad }}</span>
-                                <span class="text-muted mx-1">/</span>
-                                <span class="badge bg-secondary">{{ p.StockMinimo }}</span>
+                                <span class="badge bg-secondary">{{ p.stockminimo }}</span>
+                            </td>
+                            <td class="text-center">
+                                <span class="badge bg-warning text-dark">Faltan {{ p.stockminimo }} unidades</span>
                             </td>
                             <td class="text-end pe-4">
-                                <a href="{% url 'proveedor_producto_lista' %}?q={{ p.Nombre }}" 
-                                   class="btn btn-sm btn-outline-danger fw-bold rounded-pill px-3">
-                                    <i class="fas fa-truck me-1"></i> Pedir
+                                <a href="{% url 'proveedor_producto_lista' %}?q={{ p.nombre }}" 
+                                   class="btn btn-sm btn-danger fw-bold rounded-pill px-3">
+                                    <i class="fas fa-truck me-1"></i> REABASTECER URGENTE
                                 </a>
                             </td>
                         </tr>
@@ -69,6 +68,85 @@
                 </table>
             </div>
         </div>
+    </div>
+    {% endif %}
+
+    {% if productos_bajos %}
+    <div class="card border-0 shadow mb-4 overflow-hidden">
+        <div class="card-header bg-warning bg-gradient text-dark py-3">
+            <div class="d-flex justify-content-between align-items-center">
+                <h5 class="mb-0 fw-bold">
+                    <i class="fas fa-exclamation-triangle fa-lg me-2"></i> PRODUCTOS CON STOCK BAJO - REQUIEREN REABASTECIMIENTO
+                </h5>
+                <span class="badge bg-dark text-warning rounded-pill">{{ productos_bajos|length }} Productos</span>
+            </div>
+        </div>
+        
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-hover align-middle mb-0">
+                    <thead class="bg-warning-subtle text-uppercase small text-muted">
+                        <tr>
+                            <th class="ps-4">Nombre del Producto</th>
+                            <th class="text-center">Cantidad Actual</th>
+                            <th class="text-center">Stock Mínimo</th>
+                            <th class="text-center">Diferencia</th>
+                            <th class="text-center">Estado</th>
+                            <th class="text-end pe-4">Acción</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for p in productos_bajos %}
+                        <tr>
+                            <td class="ps-4">
+                                <div class="d-flex align-items-center">
+                                    <div class="bg-warning text-dark rounded p-2 me-3">
+                                        <i class="fas fa-box-open"></i>
+                                    </div>
+                                    <div>
+                                        <h6 class="mb-0 fw-bold">{{ p.nombre }}</h6>
+                                        <small class="text-warning fw-bold">Stock crítico</small>
+                                    </div>
+                                </div>
+                            </td>
+                            <td class="text-center">
+                                <span class="badge bg-warning text-dark fs-6">{{ p.cantidad }} unidades</span>
+                            </td>
+                            <td class="text-center">
+                                <span class="badge bg-secondary">{{ p.stockminimo }}</span>
+                             </td>
+                            <td class="text-center">
+                                {% with diferencia=p.stockminimo|add:"-"|add:p.cantidad %}
+                                <span class="badge bg-info text-dark">Faltan {{ diferencia }} para mínimo</span>
+                                {% endwith %}
+                            </td>
+                            <td class="text-center">
+                                <div class="progress" style="height: 8px; width: 100px; margin: 0 auto;">
+                                    <div class="progress-bar bg-warning" role="progressbar" 
+                                         style="width: {% widthratio p.cantidad p.stockminimo 100 %}%;">
+                                    </div>
+                                </div>
+                                <small class="text-muted">{% widthratio p.cantidad p.stockminimo 100 %}% del mínimo</small>
+                            </td>
+                            <td class="text-end pe-4">
+                                <a href="{% url 'proveedor_producto_lista' %}?q={{ p.nombre }}" 
+                                   class="btn btn-sm btn-warning fw-bold rounded-pill px-3">
+                                    <i class="fas fa-truck me-1"></i> Solicitar Pedido
+                                </a>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+    {% if not productos_agotados and not productos_bajos %}
+    <div class="alert alert-success shadow-sm border-0 mb-4">
+        <i class="fas fa-check-circle me-2"></i> 
+        <strong>¡Excelente!</strong> Todos los productos tienen stock suficiente. No se requieren reabastecimientos por ahora.
     </div>
     {% endif %}
 
@@ -84,11 +162,11 @@
                 </div>
             </div>
         </div>
-        <div class="col-md-4">
+        <div class="col-col-md-4">
             <div class="card text-white bg-success mb-3 shadow h-100 border-0">
                 <div class="card-body d-flex justify-content-between align-items-center">
                     <div>
-                        <h6 class="card-title text-uppercase mb-0 text-white fw-bold">PRODUCTOS</h6>
+                        <h6 class="card-title text-uppercase mb-0 text-white fw-bold">PRODUCTOS ACTIVOS</h6>
                         <h2 class="display-4 fw-bold my-0">{{ total_productos }}</h2>
                     </div>
                     <i class="fas fa-box-open fa-3x opacity-75"></i>
@@ -133,7 +211,6 @@
     </div>
 
     <style>
-        /* Ajustes finos para modo oscuro en el dashboard */
         [data-bs-theme="dark"] .card-custom {
             background-color: #1e1e1e !important;
             color: white !important;
@@ -143,6 +220,16 @@
             color: #212529 !important;
         }
         [data-bs-theme="dark"] .text-muted { color: #adb5bd !important; }
+        
+        [data-bs-theme="dark"] .table {
+            color: #e0e0e0;
+        }
+        [data-bs-theme="dark"] .bg-warning-subtle {
+            background-color: #332701 !important;
+        }
+        [data-bs-theme="dark"] .bg-danger-subtle {
+            background-color: #2c0a0a !important;
+        }
     </style>
 
 {% endblock %}
@@ -154,7 +241,6 @@
     const data = {{ chart_data|safe }};
     const colores = ['#FF6384', '#36A2EB', '#FFCE56', '#4BC0C0', '#9966FF'];
 
-    // Detectar tema para color de letra en gráficas
     const isDark = document.documentElement.getAttribute('data-bs-theme') === 'dark';
     Chart.defaults.color = isDark ? '#fff' : '#666';
     Chart.defaults.borderColor = isDark ? '#444' : '#ddd';
@@ -166,14 +252,26 @@
             data: {
                 labels: labels,
                 datasets: [{
-                    label: 'Unidades',
+                    label: 'Unidades Vendidas',
                     data: data,
                     backgroundColor: '#36A2EB',
                     borderColor: '#36A2EB',
                     borderWidth: 1
                 }]
             },
-            options: { scales: { y: { beginAtZero: true } } }
+            options: { 
+                scales: { 
+                    y: { 
+                        beginAtZero: true,
+                        title: {
+                            display: true,
+                            text: 'Cantidad de unidades'
+                        }
+                    } 
+                },
+                responsive: true,
+                maintainAspectRatio: true
+            }
         });
     }
 
@@ -189,7 +287,14 @@
                     hoverOffset: 4
                 }]
             },
-            options: { maintainAspectRatio: false }
+            options: { 
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        position: 'bottom'
+                    }
+                }
+            }
         });
     }
 </script>

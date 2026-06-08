@@ -78,8 +78,18 @@ def dashboard_view(request):
     labels = [item['id_producto__nombre'] for item in top5_query]
     data = [item['TotalVendido'] for item in top5_query]
 
-    # 3. Alerta Stock Bajo
-    productos_bajos = Productos.objects.filter(cantidad__lte=F('stockminimo'), activo=True).order_by('cantidad')
+    # 3. Alerta Stock BAJO (Productos que necesitan reabastecimiento)
+    # Esto trae los productos con cantidad <= stockminimo
+    productos_bajos = Productos.objects.filter(
+        cantidad__lte=F('stockminimo'), 
+        activo=True
+    ).order_by('cantidad')  # Ordenar por cantidad ascendente (los más críticos primero)
+    
+    # 4. Alerta Stock AGOTADOS (Cantidad = 0)
+    productos_agotados = Productos.objects.filter(
+        cantidad=0, 
+        activo=True
+    ).order_by('nombre')
 
     context = {
         'nombre_usuario': request.session.get('user_nombre'),
@@ -90,6 +100,7 @@ def dashboard_view(request):
         'chart_labels': json.dumps(labels),
         'chart_data': json.dumps(data),
         'productos_bajos': productos_bajos,
+        'productos_agotados': productos_agotados,  # Nueva variable
     }
     return render(request, 'tienda/dashboard.html', context)
 

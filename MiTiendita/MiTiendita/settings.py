@@ -28,6 +28,8 @@ INSTALLED_APPS = [
     'django.contrib.staticfiles',
     'tienda',   # Tu app principal
     'usuarios', # Tu app de usuarios
+    
+    
 ]
 
 MIDDLEWARE = [
