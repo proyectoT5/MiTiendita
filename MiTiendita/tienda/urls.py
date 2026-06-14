@@ -50,6 +50,7 @@ urlpatterns = [
 
     #---- ClienteIdentificaion ----
     path('clientes/cargar',views.cargar_identidad_view,name='cargar_identidad'),
+    
 
     # --- PROVEEDORES ---
     path('proveedores/', views.proveedores_view, name='proveedores_lista'),
