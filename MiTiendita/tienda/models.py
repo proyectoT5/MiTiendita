@@ -12,6 +12,29 @@ class Clientes(models.Model):
     activo = models.BooleanField(db_column='activo', default=True)
     esocasional = models.BooleanField(db_column='EsOcasional', default=False)
 
+    @property
+    def Tiene_Identidad(self):
+        """Verifica si el cliente tiene fotos de identidad cargadas"""
+        try:
+            return (hasattr(self, 'identidad') and 
+                   self.identidad and 
+                   bool(self.identidad.foto_frontal) and 
+                   bool(self.identidad.foto_trasera))
+        except:
+            return False
+    
+    @property
+    def deuda_acumulada(self):
+        """Calcula la deuda actual del cliente"""
+        from django.db.models import Sum
+        from .models import Facturas  # Importa aquí para evitar circular imports
+        
+        deuda = Facturas.objects.filter(
+            cliente=self, 
+            anulada=False, 
+            en_deuda=True
+        ).aggregate(Sum('Total'))['Total__sum'] or 0.00
+        return float(deuda)
     class Meta:
         managed = True
         db_table = 'Clientes'

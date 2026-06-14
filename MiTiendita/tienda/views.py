@@ -888,6 +888,10 @@ def registrar_compra_view(request):
 #              FACTURACIÓN
 # ==========================================
 
+# ==========================================
+#              FACTURACIÓN
+# ==========================================
+
 @login_requerido
 def facturacion_view(request):
     carrito = request.session.get('carrito', {})
@@ -896,7 +900,10 @@ def facturacion_view(request):
         request.session['carrito'] = {}
 
     total_venta = sum(float(item['subtotal']) for item in carrito.values())
-    clientes = Clientes.objects.filter(activo=True)
+    
+    # Usar select_related para optimizar la consulta
+    clientes = Clientes.objects.filter(activo=True).select_related('identidad')
+    
     productos = Productos.objects.filter(activo=True)
 
     return render(request, 'tienda/facturacion.html', {
@@ -905,7 +912,9 @@ def facturacion_view(request):
         'carrito': carrito,
         'total': total_venta
     })
-
+# ========================================================
+#  🛡️ SEGUNDO BLINDAJE: GUARDAR FACTURA Y VALIDAR CRÉDITO
+# ========================================================
 # ========================================================
 #  🛡️ SEGUNDO BLINDAJE: GUARDAR FACTURA Y VALIDAR CRÉDITO
 # ========================================================
@@ -943,32 +952,61 @@ def facturacion_guardar_view(request):
             else:
                 cliente_obj = get_object_or_404(Clientes, id_cliente=id_cli)
 
-            # 🛑 2. CONTROL DE SEGURIDAD ULTRA-BLINDADO (BACKEND)
+            # 🛑 2. CONTROL DE SEGURIDAD ULTRA-BLINDADO (LÍMITES DE CRÉDITO)
             if es_fiado:
-                # Regla A: Público General jamás puede fiar
+                # REGLA A: Público General jamás puede fiar
                 if cliente_obj.id_cliente == 1:
-                    messages.error(request, "❌ Error de Seguridad: No se pueden registrar deudas a 'Público General'. Selecciona un cliente real.")
+                    messages.error(request, "❌ Error de Seguridad: No se pueden registrar deudas a 'Público General'.")
                     return redirect('facturacion_view')
                 
-                # Regla B: El cliente real DEBE tener sus fotos de identidad arriba para autorizar el crédito
-                # (Evaluamos dinámicamente si el atributo 'Tiene_Identidad' está en True)
-                if not getattr(cliente_obj, 'Tiene_Identidad', False):
-                    messages.error(request, f"🔒 Crédito Denegado: El cliente {cliente_obj.nombre} {cliente_obj.apellido} no cuenta con su verificación de identidad (Fotos de Cédula) en el sistema.")
+                # REGLA B: El cliente debe estar verificado (Fotos de cédula arriba)
+                # 🔧 CORREGIDO: Verificar correctamente si tiene identidad
+                tiene_identidad = False
+                if hasattr(cliente_obj, 'identidad') and cliente_obj.identidad:
+                    tiene_identidad = bool(cliente_obj.identidad.foto_frontal and cliente_obj.identidad.foto_trasera)
+                
+                if not tiene_identidad:
+                    messages.error(request, f"🔒 Crédito Denegado: El cliente {cliente_obj.nombre} no cuenta con su verificación de identidad (fotos frontal y trasera requeridas).")
+                    return redirect('facturacion_view')
+
+                # 🛑 NUEVO CANDADO 1: Ninguna fianza individual puede ser mayor a C$ 500
+                if total_final > 500.00:
+                    messages.error(request, f"🚫 Crédito Rechazado: El monto de esta compra (C$ {total_final:.2f}) supera el límite permitido por factura al crédito, el cual es de C$ 500.00.")
+                    return redirect('facturacion_view')
+
+                # 🛑 NUEVO CANDADO 2: Límite acumulado de deuda (Historial en SQLite)
+                from django.db.models import Sum
+                deuda_actual = Facturas.objects.filter(
+                    cliente=cliente_obj, 
+                    anulada=False, 
+                    en_deuda=True
+                ).aggregate(Sum('Total'))['Total__sum'] or 0.00
+                
+                proyectado_total_deuda = float(deuda_actual) + total_final
+
+                if proyectado_total_deuda > 500.00:
+                    messages.error(
+                        request, 
+                        f"🚫 Límite de Crédito Superado: El/la cliente {cliente_obj.nombre} {cliente_obj.apellido} "
+                        f"ya tiene una deuda acumulada de C$ {deuda_actual:.2f}. "
+                        f"Si se autoriza este fiado de C$ {total_final:.2f}, su deuda total sería de C$ {proyectado_total_deuda:.2f}, "
+                        f"lo cual excede el límite máximo permitido de C$ 500.00."
+                    )
                     return redirect('facturacion_view')
             else:
                 # Si NO es fiado, validamos el pago normal al contado
                 if pago_cliente < total_final:
-                     messages.error(request, f"⚠️ El pago es insuficiente. Faltan C$ {total_final - pago_cliente}")
+                     messages.error(request, f"⚠️ El pago es insuficiente. Faltan C$ {total_final - pago_cliente:.2f}")
                      return redirect('facturacion_view')
 
-            # 3. TRANSACCIÓN ATÓMICA REPARADA Y SEGURA
+            # 3. TRANSACCIÓN ATÓMICA REPARADA Y SEGURA (Si pasa todos los filtros, guarda)
             with transaction.atomic():
                 nueva_factura = Facturas.objects.create(
                     cliente=cliente_obj,      
                     Total=total_final,
                     CostoEnvio=costo_envio,
                     anulada=False,
-                    en_deuda=es_fiado         # Guardará True únicamente si pasó los filtros anteriores
+                    en_deuda=es_fiado         
                 )
 
                 # Procesamos el bucle de productos del carrito
@@ -994,61 +1032,18 @@ def facturacion_guardar_view(request):
             request.session.modified = True
 
             if es_fiado:
-                messages.warning(request, f"⚠️ Venta registrada como DEUDA a favor de {cliente_obj.nombre}.")
+                messages.warning(request, f"⚠️ Venta registrada como DEUDA a favor de {cliente_obj.nombre}. Monto: C$ {total_final:.2f}")
             else:
-                messages.success(request, "✅ Venta registrada con éxito.")
+                cambio = pago_cliente - total_final
+                messages.success(request, f"✅ Venta registrada con éxito. Cambio: C$ {cambio:.2f}")
 
             return redirect('factura_recibo', id_fact=nueva_factura.id_factura)
 
         except Exception as e:
-            messages.error(request, f"Error al facturar: {e}")
+            messages.error(request, f"Error al facturar: {str(e)}")
             return redirect('facturacion_view')
 
     return redirect('facturacion_view')
-
-
-# ========================================================
-#  🟩 NUEVA VISTA: REGISTRO RÁPIDO DE CLIENTES DESDE CAJA (AJAX)
-# ========================================================
-from django.http import JsonResponse
-
-@login_requerido
-def clientes_rapido(request):
-    if request.method == 'POST':
-        nombre = request.POST.get('modal_cli_nombre', '').strip()
-        apellido = request.POST.get('modal_cli_apellido', '').strip()
-        
-        if not nombre:
-            return JsonResponse({'error': 'El nombre es obligatorio.'}, status=400)
-        
-        try:
-            # Buscamos el último ID para mantener el auto-incremento manual que estás manejando
-            from django.db.models import Max
-            ultimo = Clientes.objects.aggregate(Max('id_cliente'))['id_cliente__max']
-            nuevo_id = 1 if ultimo is None else ultimo + 1
-            
-            # Al crearse rápido, se guarda como Ocasional y con Tiene_Identidad=False por defecto
-            nuevo_cliente = Clientes.objects.create(
-                id_cliente=nuevo_id,
-                nombre=nombre,
-                apellido=apellido if apellido else "(Ocasional)",
-                activo=True,
-                esocasional=True,
-                Tiene_Identidad=False  # No tiene fotos todavía, por ende NO puede fiar aún
-            )
-            
-            # Retornamos los datos limpios para que el JavaScript de la caja lo agregue de inmediato
-            return JsonResponse({
-                'cliente': {
-                    'id': nuevo_cliente.id_cliente,
-                    'nombre_completo': f"{nuevo_cliente.nombre} {nuevo_cliente.apellido}".strip()
-                }
-            }, status=200)
-            
-        except Exception as e:
-            return JsonResponse({'error': f'Error interno en el servidor: {str(e)}'}, status=500)
-            
-    return JsonResponse({'error': 'Método no permitido.'}, status=405)@login_requerido
 def facturacion_agregar_item(request):
     if request.method == 'POST':
         id_prod = request.POST.get('id_producto')

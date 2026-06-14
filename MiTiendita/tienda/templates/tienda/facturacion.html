@@ -109,11 +109,13 @@
                             
                             <div class="input-group">
                                 <select name="cliente_id" id="select_cliente" class="form-select">
-                                    <option value="1" data-verificado="false">-- Público General --</option>
+                                    <option value="1" data-verificado="false" data-deuda="0">-- Público General --</option>
                                     
                                     {% for cli in clientes %}
-                                        <option value="{{ cli.id_cliente }}" data-verificado="{% if cli.Tiene_Identidad %}true{% else %}false{% endif %}">
-                                            {{ cli.nombre }} {{ cli.apellido }} {% if cli.Tiene_Identidad %}🔒{% endif %}
+                                        <option value="{{ cli.id_cliente }}" 
+                                                data-verificado="{{ cli.Tiene_Identidad|yesno:"true,false" }}"
+                                                data-deuda="{{ cli.deuda_acumulada|stringformat:".2f"|default:"0.00" }}">
+                                            {{ cli.nombre }} {{ cli.apellido }} {% if cli.foto_frontal %}🔒{% endif %}
                                         </option>
                                     {% endfor %}
                                 </select>
@@ -282,7 +284,7 @@
                     btnCobrar.disabled = true; 
                 } else {
                     // Cliente en base de datos y debidamente verificado
-                    displayCambio.innerText = "CRÉDITO AUTORIZADO / PENDIENTE";
+                    displayCambio.innerText = "CRÉDITO AUTORIZADO";
                     displayCambio.className = "h5 m-0 fw-bold text-warning";
                     if (isCarritoNotEmpty) btnCobrar.disabled = false;
                 }
@@ -317,66 +319,7 @@
         checkFiado.addEventListener('change', calcular); 
         selectCliente.addEventListener('change', calcular);
 
-        // 🟩 PROCESAMIENTO AJAX DEL MODAL RÁPIDO DE CLIENTES
-        const btnGuardarCliente = document.getElementById('btn_guardar_cliente_rapido');
-        if (btnGuardarCliente) {
-            btnGuardarCliente.addEventListener('click', function() {
-                const nom = document.getElementById('modal_nombre').value.trim();
-                const ape = document.getElementById('modal_apellido').value.trim();
-                const errorAlert = document.getElementById('modal_error_alert');
-
-                if (!nom) {
-                    errorAlert.innerText = "⚠️ El campo Nombre es obligatorio.";
-                    errorAlert.classList.remove('d-none');
-                    return;
-                }
-
-                errorAlert.classList.add('d-none');
-
-                // Solicitud AJAX nativa mediante FormData
-                const formData = new FormData();
-                formData.append('modal_cli_nombre', nom);
-                formData.append('modal_cli_apellido', ape);
-                formData.append('csrfmiddlewaretoken', '{{ csrf_token }}');
-
-                fetch("{% url 'clientes_rapido' %}", {
-                    method: 'POST',
-                    body: formData
-                })
-                .then(response => response.json().then(data => ({ status: response.status, body: data })))
-                .then(res => {
-                    if (res.status === 200) {
-                        // 1. Crear dinámicamente la nueva opción en el selector de la caja
-                        const newOption = document.createElement('option');
-                        newOption.value = res.body.cliente.id;
-                        // Forzamos "data-verificado" en false porque se acaba de registrar rápido sin fotos
-                        newOption.setAttribute('data-verificado', 'false');
-                        newOption.text = res.body.cliente.nombre_completo + " (Nuevo)";
-                        newOption.selected = true; // Dejarlo seleccionado inmediatamente
-
-                        selectCliente.add(newOption);
-
-                        // 2. Limpiar campos del modal y cerrarlo
-                        document.getElementById('modal_nombre').value = "";
-                        document.getElementById('modal_apellido').value = "";
-                        
-                        const modalEl = document.getElementById('modalClienteRapido');
-                        const modalInstance = bootstrap.Modal.getInstance(modalEl);
-                        modalInstance.hide();
-
-                        // Recalcular el estado de la caja con el nuevo cliente seleccionado
-                        calcular();
-                    } else {
-                        errorAlert.innerText = "❌ Error: " + (res.body.error || "No se pudo registrar.");
-                        errorAlert.classList.remove('d-none');
-                    }
-                })
-                .catch(err => {
-                    errorAlert.innerText = "❌ Error de conexión al servidor.";
-                    errorAlert.classList.remove('d-none');
-                });
-            });
-        }
+        
     });
 </script>
 
