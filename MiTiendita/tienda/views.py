@@ -29,7 +29,7 @@ from django.http import JsonResponse
 from .models import (
     Productos, Clientes, Proveedores, ProveedorProducto,
     Facturas, DetalleFactura, ClienteTelefono, ProveedorTelefono,
-    Egresos, CajaDiaria
+    Egresos, CajaDiaria,ClienteIdentidad
 )
 
 # ==========================================
@@ -496,14 +496,64 @@ def clientes_view(request):
     for c in qs:
         tels = ClienteTelefono.objects.filter(id_cliente=c)
         str_tels = ", ".join([t.numero_telefono_c for t in tels])
+        
+        # 🛡️ VERIFICACIÓN DE SEGURIDAD: ¿Tiene fotos de identidad arriba?
+        tiene_id = ClienteIdentidad.objects.filter(cliente=c).exists()
+        identidad_obj = ClienteIdentidad.objects.filter(cliente=c).first()
+        
         clientes_list.append({
-            'Id_Cliente': c.id_cliente, 'Nombre': c.nombre, 'Apellido': c.apellido,
-            'correo': c.correo, 'Activo': c.activo, 'Telefonos': str_tels
+            'Id_Cliente': c.id_cliente, 
+            'Nombre': c.nombre, 
+            'Apellido': c.apellido,
+            'correo': c.correo, 
+            'Activo': c.activo, 
+            'Telefonos': str_tels,
+            'Tiene_Identidad': tiene_id,
+            # Pasamos las URLs de las imágenes por si querés mostrarlas en un ojito
+            'foto_frontal': identidad_obj.foto_frontal.url if tiene_id and identidad_obj.foto_frontal else None,
+            'foto_trasera': identidad_obj.foto_trasera.url if tiene_id and identidad_obj.foto_trasera else None,
         })
 
-    context = {'nombre_usuario': request.session.get('user_nombre'), 'rol_usuario': request.session.get('user_rol'), 'clientes': clientes_list, 'search_query': search_query, 'mostrando_desactivados': bool(mostrar_desactivados)}
+    context = {
+        'nombre_usuario': request.session.get('user_nombre'), 
+        'rol_usuario': request.session.get('user_rol'), 
+        'clientes': clientes_list, 
+        'search_query': search_query, 
+        'mostrando_desactivados': bool(mostrar_desactivados)
+    }
     return render(request, 'tienda/clientes.html', context)
 
+
+@login_requerido
+def cargar_identidad_view(request):
+    """ Vista dedicada para subir o actualizar las fotos de la cédula """
+    if request.method == 'POST':
+        id_cli = request.POST.get('cliente_id')
+        cliente = get_object_or_404(Clientes, pk=id_cli)
+        
+        # Ojo: En Django los archivos que vienen de formularios se leen en request.FILES
+        frontal = request.FILES.get('foto_frontal')
+        trasera = request.FILES.get('foto_trasera')
+        
+        if not frontal or not trasera:
+            messages.error(request, "⚠️ Error: Debes subir ambas fotos (Frente y Revés) para validar la identidad.")
+            return redirect('clientes_lista')
+        
+            
+        try:
+            # update_or_create busca si ya existe el registro de ese cliente, si existe lo actualiza, si no lo crea.
+            identidad, created = ClienteIdentidad.objects.update_or_create(
+                cliente=cliente,
+                defaults={
+                    'foto_frontal': frontal,
+                    'foto_trasera': trasera
+                }
+            )
+            messages.success(request, f"🔒 Identidad de {cliente.nombre} verificada y guardada con éxito.")
+        except Exception as e:
+            messages.error(request, f"Error al guardar los archivos: {e}")
+            
+    return redirect('clientes_lista')
 import re  # 🛡️ Asegúrate de tener este import al inicio de tu views.py
 
 @login_requerido

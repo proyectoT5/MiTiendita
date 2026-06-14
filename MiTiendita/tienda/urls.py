@@ -48,6 +48,9 @@ urlpatterns = [
     path('clientes/reactivar/<int:id_cli>/', views.clientes_reactivar_view, name='clientes_reactivar'),
     path('clientes/rapido/', views.clientes_rapido_view, name='clientes_rapido'),
 
+    #---- ClienteIdentificaion ----
+    path('clientes/cargar',views.cargar_identidad_view,name='cargar_identidad'),
+
     # --- PROVEEDORES ---
     path('proveedores/', views.proveedores_view, name='proveedores_lista'),
     path('proveedores/agregar/', views.proveedores_agregar_view, name='proveedores_agregar'),

@@ -124,3 +124,34 @@ class DetalleFactura(models.Model):
     id_producto = models.ForeignKey(Productos, on_delete=models.CASCADE)
     Cantidad = models.IntegerField()
     Subtotal = models.DecimalField(max_digits=10, decimal_places=2)
+
+
+#
+#Tabla de registro de identificacion
+#
+class ClienteIdentidad(models.Model):
+    cliente = models.OneToOneField(
+        Clientes,
+        on_delete=models.CASCADE,
+        related_name='identidad'
+    )
+
+    foto_frontal = models.ImageField(
+        upload_to='identidades/',
+        null=True,
+        blank=True
+    )
+
+    foto_trasera = models.ImageField(
+        upload_to='identidades/',
+        null=True,
+        blank=True
+    )
+
+    fecha_registro = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'ClienteIdentidad'
+
+    def __str__(self):
+        return f"Identidad - {self.cliente.nombre}"
