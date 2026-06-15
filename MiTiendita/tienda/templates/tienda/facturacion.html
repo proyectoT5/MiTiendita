@@ -105,25 +105,29 @@
                         {% csrf_token %}
 
                         <div class="p-3 border-bottom border-secondary caja-section">
-                            <label class="fw-bold small text-muted mb-1"><i class="fas fa-user me-1"></i> CLIENTE:</label>
+                            <label class="fw-bold small text-muted mb-1"><i class="fas fa-user me-1"></i> BUSCAR CLIENTE:</label>
                             
                             <div class="input-group">
-                                <select name="cliente_id" id="select_cliente" class="form-select">
-                                    <option value="1" data-verificado="false" data-deuda="0">-- Público General --</option>
-                                    
+                                <input type="text" id="buscador_cliente" class="form-control" placeholder="Escriba nombre del cliente..." list="lista_clientes" value="-- Público General --" autocomplete="off">
+                                
+                                <datalist id="lista_clientes">
+                                    <option data-id="1" data-verificado="false" data-deuda="0" value="-- Público General --"></option>
                                     {% for cli in clientes %}
-                                        <option value="{{ cli.id_cliente }}" 
+                                        <option data-id="{{ cli.id_cliente }}" 
                                                 data-verificado="{{ cli.Tiene_Identidad|yesno:"true,false" }}"
-                                                data-deuda="{{ cli.deuda_acumulada|stringformat:".2f"|default:"0.00" }}">
-                                            {{ cli.nombre }} {{ cli.apellido }} {% if cli.foto_frontal %}🔒{% endif %}
+                                                data-deuda="{{ cli.deuda_acumulada|stringformat:".2f"|default:"0.00" }}"
+                                                value="{{ cli.nombre }} {{ cli.apellido }} {% if cli.foto_frontal %}(Verificado 🔒){% endif %}">
                                         </option>
                                     {% endfor %}
-                                </select>
+                                </datalist>
+
+                                <input type="hidden" name="cliente_id" id="cliente_id_hidden" value="1">
                                 
                                 <a href="{% url 'clientes_agregar' %}" class="btn btn-success" title="Ir a Registrar Cliente Nuevo">
                                     <i class="fas fa-user-plus"></i>
                                 </a>
                             </div>
+                            <small id="info_cliente_factura" class="text-muted d-block mt-1 fw-bold small"></small>
                         </div>                        
 
                         <div class="flex-grow-1 overflow-auto" style="max-height: 350px;">
@@ -215,33 +219,6 @@
     </div>
 </div>
 
-<div class="modal fade" id="modalClienteRapido" tabindex="-1" aria-hidden="true">
-    <div class="modal-dialog modal-dialog-centered">
-        <div class="modal-content">
-            <div class="modal-header bg-success text-white">
-                <h5 class="modal-title fw-bold"><i class="fas fa-user-plus me-2"></i> Registro Rápido de Cliente</h5>
-                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
-            </div>
-            <div class="modal-body">
-                <div id="modal_error_alert" class="alert alert-danger d-none small"></div>
-                <div class="mb-3">
-                    <label class="form-label fw-bold small">Nombre(s) *</label>
-                    <input type="text" id="modal_nombre" class="form-control" placeholder="Ej: Juan José">
-                </div>
-                <div class="mb-3">
-                    <label class="form-label fw-bold small">Apellido(s)</label>
-                    <input type="text" id="modal_apellido" class="form-control" placeholder="Ej: Pérez López">
-                </div>
-                <p class="text-muted style-italic small">⚠️ Nota: Los clientes creados de forma rápida se guardan como ocasionales y requerirán subir su fotografía de identidad en el catálogo general antes de recibir un crédito.</p>
-            </div>
-            <div class="modal-footer bg-light">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
-                <button type="button" id="btn_guardar_cliente_rapido" class="btn btn-success fw-bold px-4">Guardar Cliente</button>
-            </div>
-        </div>
-    </div>
-</div>
-
 <script>
     document.addEventListener('DOMContentLoaded', function() {
         const subtotalBase = parseFloat("{{ total|default:0 }}".replace(',', '.'));
@@ -250,21 +227,75 @@
         const displayTotal = document.getElementById('display_total');
         const displayCambio = document.getElementById('display_cambio');
         const checkFiado = document.getElementById('checkFiado');
-        const selectCliente = document.getElementById('select_cliente');
         const btnCobrar = document.getElementById('btn_cobrar');
         const isCarritoNotEmpty = {% if carrito %}true{% else %}false{% endif %};
 
+        // Elementos nuevos del buscador dinámico
+        const buscadorCliente = document.getElementById('buscador_cliente');
+        const clienteIdHidden = document.getElementById('cliente_id_hidden');
+        const listaClientes = document.getElementById('lista_clientes');
+        const infoClienteFactura = document.getElementById('info_cliente_factura');
+
+        // Variables de estado interno del cliente seleccionado
+        let currentClienteId = "1";
+        let currentEsVerificado = false;
+        let currentDeuda = 0;
+
+        function evaluarClienteSeleccionado() {
+            const valorInput = buscadorCliente.value;
+            let encontrado = false;
+
+            // Escaneamos las opciones del datalist para buscar coincidencia exacta con lo escrito
+            for (let option of listaClientes.options) {
+                if (option.value === valorInput) {
+                    currentClienteId = option.getAttribute('data-id');
+                    currentEsVerificado = option.getAttribute('data-verificado') === 'true';
+                    currentDeuda = parseFloat(option.getAttribute('data-deuda') || "0");
+                    
+                    clienteIdHidden.value = currentClienteId; // Seteamos el ID real para el POST
+                    encontrado = true;
+                    break;
+                }
+            }
+
+            // Si el usuario escribe algo inválido o borra el campo, reseteamos a Público General por seguridad
+            if (!encontrado) {
+                currentClienteId = "1";
+                currentEsVerificado = false;
+                currentDeuda = 0;
+                clienteIdHidden.value = "1";
+                if(valorInput.trim() === "") {
+                    infoClienteFactura.innerText = "";
+                } else {
+                    infoClienteFactura.innerText = "⚠️ Cliente no registrado (Se procesará como Público General)";
+                    infoClienteFactura.className = "text-warning d-block mt-1 fw-bold small";
+                    return;
+                }
+            }
+
+            // Mostrar estado o deudas del cliente abajo del buscador
+            if (currentClienteId === "1") {
+                infoClienteFactura.innerText = "👤 Ventas de mostrador libres.";
+                infoClienteFactura.className = "text-muted d-block mt-1 small";
+            } else {
+                if (currentDeuda > 0) {
+                    infoClienteFactura.innerText = `⚠️ Este cliente debe: C$ ${currentDeuda.toFixed(2)}`;
+                    infoClienteFactura.className = "text-danger d-block mt-1 fw-bold small";
+                } else {
+                    infoClienteFactura.innerText = "✅ Cliente solvente / Registro al día.";
+                    infoClienteFactura.className = "text-success d-block mt-1 fw-bold small";
+                }
+            }
+        }
+
         function calcular() {
+            evaluarClienteSeleccionado();
+
             let envio = inputEnvio.value === "" ? 0 : parseFloat(inputEnvio.value);
             let totalFinal = subtotalBase + envio;
             
             displayTotal.innerText = "C$ " + totalFinal.toFixed(2);
             
-            // Evaluamos la opción del cliente seleccionado en tiempo real
-            const optionSeleccionada = selectCliente.options[selectCliente.selectedIndex];
-            const esClienteVerificado = optionSeleccionada.getAttribute('data-verificado') === 'true';
-            const idCliente = optionSeleccionada.value;
-
             // --- LÓGICA DE FIADO BLINDADA ---
             if (checkFiado.checked) {
                 inputPago.value = "";           
@@ -272,18 +303,15 @@
                 inputPago.placeholder = "---";  
                 inputPago.required = false;     
                 
-                if (idCliente === "1") {
-                    // Intento de fiar a Público General
+                if (currentClienteId === "1") {
                     displayCambio.innerText = "❌ RECHAZADO: PÚBLICO GENERAL";
                     displayCambio.className = "h6 m-0 fw-bold text-danger";
                     btnCobrar.disabled = true; 
-                } else if (!esClienteVerificado) {
-                    // Intento de fiar a un cliente sin documentación arriba
+                } else if (!currentEsVerificado) {
                     displayCambio.innerText = "🔒 BLOQUEADO: FALTA IDENTIDAD DERECHO/REVÉS";
                     displayCambio.className = "h6 m-0 fw-bold text-danger";
                     btnCobrar.disabled = true; 
                 } else {
-                    // Cliente en base de datos y debidamente verificado
                     displayCambio.innerText = "CRÉDITO AUTORIZADO";
                     displayCambio.className = "h5 m-0 fw-bold text-warning";
                     if (isCarritoNotEmpty) btnCobrar.disabled = false;
@@ -313,13 +341,16 @@
             }
         }
 
-        // Eventos de la caja calculadora
+        // Ejecutar los cálculos y re-evaluación al escribir en el buscador de clientes
+        buscadorCliente.addEventListener('input', calcular);
+
+        // Eventos base de la calculadora
         inputEnvio.addEventListener('input', calcular);
         inputPago.addEventListener('input', calcular);
         checkFiado.addEventListener('change', calcular); 
-        selectCliente.addEventListener('change', calcular);
-
         
+        // Ejecución inicial
+        calcular();
     });
 </script>
 
