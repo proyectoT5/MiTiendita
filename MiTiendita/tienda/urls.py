@@ -79,6 +79,17 @@ urlpatterns = [
     path('reportes/pdf/', views.reporte_pdf_view, name='reporte_pdf'),
 
     path('productos/guardar-borrador/', views.guardar_borrador_producto_view, name='guardar_borrador_producto'),
+    
+    #DEVOLUCIONES Y PERDIDAS
+    # 1. Ruta para ver la pantalla principal (Lista e Historial)
+    path('devoluciones/', views.devoluciones_list_view, name='devoluciones_list_view'),
+    
+    # 2. Ruta para procesar el formulario de registro (El POST)
+    path('devoluciones/registrar/', views.registrar_movimiento_devolucion, name='registrar_movimiento_devolucion'),
+    
+    # 3. Ruta para cuando llega el proveedor y te cambia el producto malo por uno nuevo gratis
+    # Usamos <int:id_movimiento> para saber exactamente qué registro estamos resolviendo
+    path('devoluciones/resolver/<int:id_movimiento>/', views.resolver_pendiente_proveedor, name='resolver_pendiente_proveedor'),
 
     
 

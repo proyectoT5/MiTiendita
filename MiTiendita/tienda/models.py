@@ -178,3 +178,28 @@ class ClienteIdentidad(models.Model):
 
     def __str__(self):
         return f"Identidad - {self.cliente.nombre}"
+"""
+MANEJADOR DEVOLUCIONES Y PERDIDAS
+"""    
+class DevolucionesPerdidas(models.Model):
+    TIPO_EVENTO_CHOICES = [
+        ('PERDIDA_LOCAL', 'Pérdida Interna (Daño en Local)'),
+        ('DEV_CLIENTE', 'Devolución de Cliente (Intercambio)'),
+        ('DEV_PROVEEDOR', 'Envío Directo a Proveedor (Vencidos)'),
+    ]
+    
+    ESTADO_PROVEEDOR_CHOICES = [
+        ('PENDIENTE', 'Pendiente de Reposición'),
+        ('RESUELTO', 'Repuesto por Proveedor'),
+        ('NO_APLICA', 'No Aplica'),
+    ]
+
+    producto = models.ForeignKey(Productos, on_delete=models.CASCADE, verbose_name="Producto afectado")
+    tipo_evento = models.CharField(max_length=20, choices=TIPO_EVENTO_CHOICES)
+    cantidad = models.PositiveIntegerField(default=1)
+    motivo = models.TextField(help_text="Razón del daño o estado del producto")
+    estado_proveedor = models.CharField(max_length=20, choices=ESTADO_PROVEEDOR_CHOICES, default='NO_APLICA')
+    fecha = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f"{self.tipo_evento} - {self.producto.nombre} ({self.cantidad})"    

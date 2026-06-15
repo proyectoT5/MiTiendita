@@ -29,7 +29,7 @@ from django.http import JsonResponse
 from .models import (
     Productos, Clientes, Proveedores, ProveedorProducto,
     Facturas, DetalleFactura, ClienteTelefono, ProveedorTelefono,
-    Egresos, CajaDiaria,ClienteIdentidad
+    Egresos, CajaDiaria,ClienteIdentidad,DevolucionesPerdidas
 )
 
 # ==========================================
@@ -1478,3 +1478,99 @@ def reporte_pdf_view(request):
         return HttpResponse('Tuvimos errores <pre>' + html + '</pre>')
     return response
 
+"""
+DEVOLCIONES Y PERDIDAS DEL NEGOCIO
+"""
+
+@login_requerido
+def devoluciones_list_view(request):
+    """Muestra el historial de pérdidas y devoluciones y el formulario"""
+    movimientos = DevolucionesPerdidas.objects.all().order_by('-fecha')
+    productos = Productos.objects.filter(activo=True)
+    
+    # Calculamos cuántos productos tenemos acumulados esperando que el proveedor los cambie
+    pendientes_proveedor = DevolucionesPerdidas.objects.filter(estado_proveedor='PENDIENTE')
+
+    return render(request, 'tienda/devoluciones.html', {
+        'movimientos': movimientos,
+        'productos': productos,
+        'pendientes_proveedor': pendientes_proveedor
+    })
+
+@login_requerido
+def registrar_movimiento_devolucion(request):
+    """Procesa el formulario del nuevo apartado"""
+    if request.method == 'POST':
+        id_prod = request.POST.get('id_producto')
+        tipo_evento = request.POST.get('tipo_evento')
+        cantidad = int(request.POST.get('cantidad') or 1)
+        motivo = request.POST.get('motivo', '').strip()
+
+        producto = get_object_or_404(Productos, id_producto=id_prod)
+
+        try:
+            with transaction.atomic():
+                estado_prov = 'NO_APLICA'
+                
+                if tipo_evento == 'PERDIDA_LOCAL':
+                    # Escenario 1: Se quebró en el local. Restamos stock directo.
+                    if producto.cantidad < cantidad:
+                        raise Exception(f"No podés registrar una pérdida mayor al stock disponible ({producto.cantidad}).")
+                    producto.cantidad -= cantidad
+                    producto.save()
+                    messages.success(request, f"❌ Pérdida interna registrada. Se restaron {cantidad} unidades de {producto.nombre}.")
+
+                elif tipo_evento == 'DEV_CLIENTE':
+                    # Escenario 2: El cliente devuelve algo malo y se le da uno bueno.
+                    # El stock neto queda igual (entra 1 malo, sale 1 bueno), pero queda PENDIENTE con el proveedor
+                    if producto.cantidad < cantidad:
+                        raise Exception(f"No hay stock suficiente de buenos para hacerle el cambio al cliente.")
+                    
+                    # Opcional: Si el negocio NO le da un producto físico de inmediato sino que solo lo recibe,
+                    # aquí sumarías al stock. Pero como el escenario dice "intercambio", el stock físico no varía.
+                    estado_prov = 'PENDIENTE'
+                    messages.warning(request, f"🔄 Intercambio de Cliente registrado. {cantidad} unidad(es) de {producto.nombre} quedan en espera de reclamo al proveedor.")
+
+                elif tipo_evento == 'DEV_PROVEEDOR':
+                    # Escenario 3: Le entregamos al proveedor el lote vencido/malo supervisado,
+                    # y el proveedor nos da producto nuevo/bueno a cambio. El stock aumenta.
+                    producto.cantidad += cantidad
+                    producto.save()
+                    messages.success(request, f"🚚 Proveedor resolvió devolución. Se ingresaron {cantidad} unidades nuevas de {producto.nombre} al inventario.")
+                    estado_prov = 'RESUELTO'
+
+                # Guardamos el registro histórico
+                DevolucionesPerdidas.objects.create(
+                    producto=producto,
+                    tipo_evento=tipo_evento,
+                    cantidad=cantidad,
+                    motivo=motivo,
+                    estado_proveedor=estado_prov
+                )
+
+        except Exception as e:
+            messages.error(request, f"Error al procesar el movimiento: {e}")
+            
+        return redirect('devoluciones_list_view')
+        
+    return redirect('devoluciones_list_view')
+
+@login_requerido
+def resolver_pendiente_proveedor(request, id_movimiento):
+    """Cambia el estado de una devolución de cliente a 'RESUELTO' cuando llega el proveedor"""
+    movimiento = get_object_or_404(DevolucionesPerdidas, id=id_movimiento)
+    try:
+        with transaction.atomic():
+            if movimiento.estado_proveedor == 'PENDIENTE':
+                # El proveedor nos da el producto nuevo para reponer el que le dimos al cliente
+                producto = movimiento.producto
+                producto.cantidad += movimiento.cantidad
+                producto.save()
+                
+                movimiento.estado_proveedor = 'RESUELTO'
+                movimiento.save()
+                messages.success(request, f"✅ El proveedor repuso las {movimiento.cantidad} unidades de {producto.nombre}.")
+    except Exception as e:
+        messages.error(request, f"Error: {e}")
+        
+    return redirect('devoluciones_list_view')

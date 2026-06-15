@@ -1,0 +1,188 @@
+}{% extends 'tienda/base.html' %}
+{% load static %}
+
+{% block content %}
+<div class="container mt-4">
+    <div class="row g-4">
+        <div class="col-md-4">
+            <div class="card shadow border-0 rounded-3">
+                <div class="card-header bg-dark text-white py-3">
+                    <h5 class="m-0 fw-bold"><i class="fas fa-exclamation-triangle me-2"></i> Registrar Incidencia</h5>
+                </div>
+                <div class="card-body">
+                    <form action="{% url 'registrar_movimiento_devolucion' %}" method="POST">
+                        {% csrf_token %}
+                        
+                        <div class="mb-3">
+                            <label class="form-label fw-bold small">1. Buscar Producto</label>
+                            
+                            <div class="input-group">
+                                <span class="input-group-text bg-light text-muted"><i class="fas fa-search"></i></span>
+                                <input type="text" id="buscador_producto" list="lista_productos" class="form-control" placeholder="Escriba nombre o código..." autocomplete="off" required>
+                            </div>
+                            
+                            <input type="hidden" name="id_producto" id="id_producto_oculto" required >
+                            
+                            <datalist id="lista_productos">
+                                {% for prod in productos %}<option value="{{ prod.nombre }} (Stock: {{ prod.cantidad }})" data-id="{{ prod.id_producto }}">{% endfor %}
+                            </datalist>
+                            
+                            <div id="feedback_producto" class="form-text text-danger d-none">
+                                <i class="fas fa-exclamation-circle"></i> Debe seleccionar un producto válido de la lista.
+                            </div>
+                        </div>
+
+                        <div class="mb-3">
+                            <label class="form-label fw-bold small">2. Tipo de Evento / Escenario</label>
+                            <select name="tipo_evento" id="select_evento" class="form-select" required>
+                                <option value="PERDIDA_LOCAL">⚠️ Pérdida Interna (Daño en Local)</option>
+                                <option value="DEV_CLIENTE">🔄 Devolución de Cliente (Intercambio)</option>
+                            </select>
+                        </div>
+
+                        <div class="mb-3">
+                            <label class="form-label fw-bold small">3. Cantidad de Unidades</label>
+                            <input type="number" name="cantidad" class="form-control" value="1" min="1" required>
+                        </div>
+
+                        <div class="mb-3">
+                            <label class="form-label fw-bold small">4. Motivo / Evidencia</label>
+                            <textarea name="motivo" class="form-control" rows="3" placeholder="Ej: Botella de refresco quebrada por caída o Leche agria devuelta por cliente..." required></textarea>
+                        </div>
+
+                        <button type="submit" class="btn btn-danger w-100 fw-bold py-2 shadow-sm">
+                            💾 Guardar Registro
+                        </button>
+                    </form>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-8">
+            {% if pendientes_proveedor %}
+            <div class="alert alert-warning shadow-sm border-0 d-flex align-items-center justify-content-between p-3 mb-3 rounded-3">
+                <div>
+                    <h6 class="alert-heading fw-bold m-0">🚚 Hay reclamos pendientes con proveedores</h6>
+                    <small>Recuerda entregar estos productos defectuosos al camión repartidor cuando llegue al negocio.</small>
+                </div>
+                <span class="badge bg-dark fs-6 rounded-pill">{{ pendientes_proveedor|length }}</span>
+            </div>
+            {% endif %}
+
+            <div class="card shadow border-0 rounded-3 overflow-hidden">
+                <div class="card-header bg-primary text-white py-3">
+                    <h5 class="m-0 fw-bold"><i class="fas fa-history me-2"></i> Historial de Devoluciones y Pérdidas</h5>
+                </div>
+                <div class="card-body p-0">
+                    <div class="table-responsive" style="max-height: 65vh; overflow-y: auto;">
+                        <table class="table table-hover align-middle mb-0">
+                            <thead class="table-light sticky-top">
+                                <tr>
+                                    <th class="ps-3">Fecha</th>
+                                    <th>Producto</th>
+                                    <th>Tipo de Evento</th>
+                                    <th class="text-center">Cant.</th>
+                                    <th>Detalle / Motivo</th>
+                                    <th class="text-center pe-3">Acción Proveedor</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for mov in movimientos %}
+                                <tr>
+                                    <td class="ps-3 text-muted small">{{ mov.fecha|date:"d/m/Y h:i a" }}</td>
+                                    <td><strong class="text-dark">{{ mov.producto.nombre }}</strong></td>
+                                    <td>
+                                        {% if mov.tipo_evento == 'PERDIDA_LOCAL' %}
+                                            <span class="badge bg-danger">Pérdida Local</span>
+                                        {% elif mov.tipo_evento == 'DEV_CLIENTE' %}
+                                            <span class="badge bg-warning text-dark">Dev. Cliente</span>
+                                        {% else %}
+                                            <span class="badge bg-info text-dark">A Proveedor</span>
+                                        {% endif %}
+                                    </td>
+                                    <td class="text-center fw-bold">{{ mov.cantidad }}</td>
+                                    <td class="text-muted small" style="max-width: 200px; white-space: normal;">{{ mov.motivo }}</td>
+                                    <td class="text-center pe-3">
+                                        {% if mov.estado_proveedor == 'PENDIENTE' %}
+                                            <a href="{% url 'resolver_pendiente_proveedor' mov.id %}" class="btn btn-sm btn-success fw-bold px-2 shadow-sm" title="Marcar que el proveedor ya nos trajo el repuesto">
+                                                📦 Recibir Repuesto
+                                            </a>
+                                        {% elif mov.estado_proveedor == 'RESUELTO' %}
+                                            <span class="text-success small fw-bold"><i class="fas fa-check-circle"></i> Resuelto</span>
+                                        {% else %}
+                                            <span class="text-muted small">N/A</span>
+                                        {% endif %}
+                                    </td>
+                                </tr>
+                                {% empty %}
+                                <tr>
+                                    <td colspan="6" class="text-center py-5 text-muted opacity-50">
+                                        <i class="fas fa-folder-open fs-1 mb-2"></i><br>No hay registros de incidencias todavía.
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block content_scripts %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const inputBuscador = document.getElementById('buscador_producto');
+    const inputOculto = document.getElementById('id_producto_oculto');
+    const datalist = document.getElementById('lista_productos');
+    const feedback = document.getElementById('feedback_producto');
+    const form = inputBuscador.closest('form');
+
+    // Función unificada para validar si lo escrito coincide con el datalist
+    function validarSeleccion() {
+        const val = inputBuscador.value.trim().toLowerCase();
+        const opciones = datalist.options;
+        let encontrado = false;
+
+        for (let i = 0; i < opciones.length; i++) {
+            // Comparamos ignorando mayúsculas/minúsculas y espacios extras
+            const opcionVal = opciones[i].value.trim().toLowerCase();
+            
+            if (opcionVal === val && val !== '') {
+                inputOculto.value = opciones[i].getAttribute('data-id');
+                encontrado = true;
+                feedback.classList.add('d-none');
+                inputBuscador.classList.remove('is-invalid');
+                inputBuscador.classList.add('is-valid');
+                break;
+            }
+        }
+
+        if (!encontrado) {
+            inputOculto.value = '';
+            inputBuscador.classList.remove('is-valid');
+        }
+    }
+
+    // Escucha mientras escribe Y cuando selecciona con el puntero/enter
+    inputBuscador.addEventListener('input', validarSeleccion);
+    inputBuscador.addEventListener('change', validarSeleccion);
+
+    // Validación definitiva al dar clic en Guardar
+    form.addEventListener('submit', function(e) {
+        // Ejecutamos una última revisión por si acaso
+        validarSeleccion(); 
+
+        if (!inputOculto.value || inputOculto.value === '') {
+            e.preventDefault(); // Detiene el envío de datos basura a Django
+            feedback.classList.remove('d-none');
+            inputBuscador.classList.remove('is-valid');
+            inputBuscador.classList.add('is-invalid');
+            inputBuscador.focus();
+        }
+    });
+});
+</script>
+{% endblock %}

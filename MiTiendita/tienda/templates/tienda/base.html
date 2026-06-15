@@ -114,6 +114,13 @@
                             <i class="fas fa-file-invoice-dollar"></i> FACTURAR
                         </a>
                     </li>
+
+                    <li class="nav-item">
+                        <a class="nav-link {% if request.resolver_match.url_name == 'devoluciones_list_view' %}active fw-bold text-warning{% endif %}" 
+                        href="{% url 'devoluciones_list_view' %}">
+                            <i class="fas fa-exchange-alt me-1"></i> Operaciones
+                        </a>
+                    </li>                    
                     
                     <li class="nav-item">
                         <a class="nav-link" href="{% url 'historial_facturas' %}">
