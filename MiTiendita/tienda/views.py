@@ -865,12 +865,47 @@ def registrar_compra_view(request):
         try:
             id_prov = request.POST.get('id_proveedor')
             id_prod = request.POST.get('id_producto')
-            cant_bultos = int(request.POST.get('cantidad_bultos'))
+            cant_bultos = int(request.POST.get('cantidad_bultos') or 0)
+            
+            if cant_bultos <= 0:
+                messages.error(request, "La cantidad de bultos debe ser mayor a 0.")
+                return redirect('proveedor_producto_lista')
+
             with transaction.atomic():
+                # 1. Buscar la caja diaria que está abierta actualmente
+                caja_activa = CajaDiaria.objects.filter(activa=True).first()
+                if not caja_activa:
+                    raise Exception("No se puede abastecer porque NO hay ninguna caja abierta en este turno.")
+
+                # 2. Obtener los datos del proveedor y el producto para calcular costos
                 pp = get_object_or_404(ProveedorProducto, proveedor_id=id_prov, producto_id=id_prod)
                 total_unidades = cant_bultos * pp.cantidadcompra
                 total_dinero = cant_bultos * pp.preciocompra
 
+                # 3. MATEMÁTICA EN TIEMPO REAL: ¿Cuánto dinero real hay en la caja?
+                # Sumamos las facturas cobradas (no anuladas y que ya no estén en deuda)
+                total_ventas = Facturas.objects.filter(
+                    FechaHora__gte=caja_activa.fecha_apertura,
+                    anulada=False,
+                    en_deuda=False
+                ).aggregate(total=Sum('Total'))['total'] or 0
+
+                # Sumamos los egresos registrados desde que se abrió esta caja
+                total_egresos = Egresos.objects.filter(
+                    fecha__gte=caja_activa.fecha_apertura
+                ).aggregate(total=Sum('monto'))['total'] or 0
+
+                # Dinero físico disponible bajo el mostrador
+                dinero_disponible = caja_activa.monto_inicial + total_ventas - total_egresos
+
+                # 4. VALIDADOR FULMINANTE: Bloqueo si el costo supera los fondos
+                if total_dinero > dinero_disponible:
+                    raise Exception(
+                        f"Fondos insuficientes en Caja. Dinero disponible: C$ {dinero_disponible:,.2f}. "
+                        f"El costo del abastecimiento es de: C$ {total_dinero:,.2f}."
+                    )
+
+                # 5. Si pasa la validación, procedemos a guardar todo de forma segura
                 prod = pp.producto
                 prod.cantidad += total_unidades
                 prod.save()
@@ -879,14 +914,14 @@ def registrar_compra_view(request):
                     concepto=f"Compra: {prod.nombre} ({cant_bultos} paq. a {pp.proveedor.nombre_proveedor})",
                     monto=total_dinero
                 )
+                
             messages.success(request, f"✅ Stock +{total_unidades}. 📉 Se restaron C$ {total_dinero:,.2f} de la caja.")
+            
         except Exception as e:
-            messages.error(request, f"Error: {e}")
+            messages.error(request, f"❌ Operación rechazada: {e}")
+            
     return redirect('proveedor_producto_lista')
 
-# ==========================================
-#              FACTURACIÓN
-# ==========================================
 
 # ==========================================
 #              FACTURACIÓN
@@ -912,9 +947,6 @@ def facturacion_view(request):
         'carrito': carrito,
         'total': total_venta
     })
-# ========================================================
-#  🛡️ SEGUNDO BLINDAJE: GUARDAR FACTURA Y VALIDAR CRÉDITO
-# ========================================================
 # ========================================================
 #  🛡️ SEGUNDO BLINDAJE: GUARDAR FACTURA Y VALIDAR CRÉDITO
 # ========================================================
