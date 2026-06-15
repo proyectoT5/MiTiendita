@@ -107,9 +107,6 @@ class ProveedorProducto(models.Model):
 # ==========================================
 #  NUEVOS MODELOS (Sistema Financiero)
 # ==========================================
-
-
-
 class Egresos(models.Model):
     fecha = models.DateTimeField(auto_now_add=True)
     concepto = models.CharField(max_length=200)

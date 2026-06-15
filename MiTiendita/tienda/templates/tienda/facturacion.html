@@ -101,6 +101,15 @@
                 </div>
                 
                 <div class="card-body d-flex flex-column p-0">
+                    {% if not caja_abierta %}
+                    <div class="alert alert-danger mx-3 mt-3 text-center border-0 rounded-3 shadow-sm" style="background-color: rgba(220, 53, 69, 0.15);">
+                        <h6 class="fw-bold text-danger mb-1">⚠️ CAJA CERRADA</h6>
+                        <small class="d-block text-danger mb-2">Debes habilitar la caja antes de registrar cualquier venta.</small>
+                        <a href="{% url 'control_caja' %}" class="btn btn-danger btn-sm fw-bold rounded-2 px-3">
+                            <i class="fas fa-cash-register me-1"></i> Ir a Abrir Caja
+                        </a>
+                    </div>
+                    {% endif %}                    
                     <form action="{% url 'facturacion_guardar_view' %}" method="POST" id="form-cobrar" class="d-flex flex-column h-100">
                         {% csrf_token %}
 
@@ -207,7 +216,8 @@
                                     <i class="fas fa-trash-alt fs-5"></i>
                                 </a>
                                 
-                                <button type="submit" id="btn_cobrar" class="btn btn-success flex-grow-1 fw-bold fs-5 rounded-3 shadow-sm" {% if not carrito %}disabled{% endif %}>
+                                <button type="submit" id="btn_cobrar" class="btn btn-success flex-grow-1 fw-bold fs-5 rounded-3 shadow-sm" 
+                                        {% if not carrito or not caja_abierta %}disabled{% endif %}>
                                     ✅ COBRAR TICKET
                                 </button>
                             </div>
@@ -338,6 +348,10 @@
                     displayCambio.innerText = "C$ 0.00";
                     displayCambio.className = "h5 m-0 fw-bold text-muted";
                 }
+            }
+            // Si la caja está cerrada, el botón se queda deshabilitado pase lo que pase
+            if ("{{ caja_abierta }}" === "False") {
+                btnCobrar.disabled = true;
             }
         }
 

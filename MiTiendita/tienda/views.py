@@ -929,6 +929,9 @@ def registrar_compra_view(request):
 
 @login_requerido
 def facturacion_view(request):
+    # 🛑 CONTROL DE CAJA COMPLETO: Verificar si hay una caja abierta y activa
+    caja_abierta = CajaDiaria.objects.filter(activa=True).exists()
+    
     carrito = request.session.get('carrito', {})
     if not isinstance(carrito, dict):
         carrito = {}
@@ -938,14 +941,14 @@ def facturacion_view(request):
     
     # Usar select_related para optimizar la consulta
     clientes = Clientes.objects.filter(activo=True).select_related('identidad')
-    
     productos = Productos.objects.filter(activo=True)
 
     return render(request, 'tienda/facturacion.html', {
         'clientes': clientes,
         'productos': productos,
         'carrito': carrito,
-        'total': total_venta
+        'total': total_venta,
+        'caja_abierta': caja_abierta, # 👈 Pasamos el estado de la caja al HTML
     })
 # ========================================================
 #  🛡️ SEGUNDO BLINDAJE: GUARDAR FACTURA Y VALIDAR CRÉDITO
@@ -953,6 +956,11 @@ def facturacion_view(request):
 @login_requerido
 def facturacion_guardar_view(request):
     if request.method == 'POST':
+        # 🛑 CANDADO DE RESPALDO: Evita que procesen el POST por herramientas externas si la caja está cerrada
+        if not CajaDiaria.objects.filter(activa=True).exists():
+            messages.error(request, "⚠️ Operación Rechazada: No puede registrar ventas porque la caja se encuentra CERRADA. Abra caja primero.")
+            return redirect('control_caja') # Redirige directo a la vista del control de caja
+
         carrito = request.session.get('carrito', {})
         if not carrito:
             messages.error(request, "⚠️ Carrito vacío.")
@@ -992,7 +1000,6 @@ def facturacion_guardar_view(request):
                     return redirect('facturacion_view')
                 
                 # REGLA B: El cliente debe estar verificado (Fotos de cédula arriba)
-                # 🔧 CORREGIDO: Verificar correctamente si tiene identidad
                 tiene_identidad = False
                 if hasattr(cliente_obj, 'identidad') and cliente_obj.identidad:
                     tiene_identidad = bool(cliente_obj.identidad.foto_frontal and cliente_obj.identidad.foto_trasera)
@@ -1076,6 +1083,9 @@ def facturacion_guardar_view(request):
             return redirect('facturacion_view')
 
     return redirect('facturacion_view')
+
+
+
 def facturacion_agregar_item(request):
     if request.method == 'POST':
         id_prod = request.POST.get('id_producto')
