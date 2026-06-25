@@ -930,8 +930,7 @@ def registrar_compra_view(request):
 @login_requerido
 def facturacion_view(request):
     # 🛑 CONTROL DE CAJA COMPLETO: Verificar si hay una caja abierta y activa
-    caja_abierta = CajaDiaria.objects.filter(activa=True).exists()
-    
+    caja_abierta = CajaDiaria.objects.filter(usuario=request.user, activa=True).exists()    
     carrito = request.session.get('carrito', {})
     if not isinstance(carrito, dict):
         carrito = {}
@@ -957,7 +956,7 @@ def facturacion_view(request):
 def facturacion_guardar_view(request):
     if request.method == 'POST':
         # 🛑 CANDADO DE RESPALDO: Evita que procesen el POST por herramientas externas si la caja está cerrada
-        if not CajaDiaria.objects.filter(activa=True).exists():
+        if not CajaDiaria.objects.filter(usuario=request.user, activa=True).exists():
             messages.error(request, "⚠️ Operación Rechazada: No puede registrar ventas porque la caja se encuentra CERRADA. Abra caja primero.")
             return redirect('control_caja') # Redirige directo a la vista del control de caja
 
@@ -1308,15 +1307,37 @@ def borrar_facturas_anuladas_view(request):
 #              CONTROL DE CAJA
 # ==========================================
 
+from django.utils import timezone
+from django.db.models import Sum
+from django.contrib import messages
+from django.shortcuts import render, redirect
+from .models import CajaDiaria, Facturas, Egresos
+
 @login_requerido
 def control_caja_view(request):
-    caja_actual = CajaDiaria.objects.filter(activa=True).last()
+    # 🟢 FILTRO 1: Buscamos únicamente la caja activa DEL USUARIO actual
+    caja_actual = CajaDiaria.objects.filter(usuario=request.user, activa=True).last()
 
     # 1. ABRIR CAJA
     if request.method == 'POST' and 'abrir_caja' in request.POST:
         monto_inicio = float(request.POST.get('monto_inicial', 0))
-        CajaDiaria.objects.create(monto_inicial=monto_inicio)
-        messages.success(request, f"✅ Caja abierta con C$ {monto_inicio:,.2f}")
+        
+        # 🟢 CANDADO 2: Validar continuidad del monto con respecto a la caja anterior de este usuario
+        ultima_caja_cerrada = CajaDiaria.objects.filter(usuario=request.user, activa=False).order_by('-fecha_cierre').first()
+        
+        if ultima_caja_cerrada:
+            monto_esperado_apertura = float(ultima_caja_cerrada.monto_final or 0)
+            if monto_inicio != monto_esperado_apertura:
+                messages.error(
+                    request, 
+                    f"❌ Error de Arqueo: No podés abrir caja con C$ {monto_inicio:,.2f}. "
+                    f"Por obligación debe coincidir con el monto de cierre anterior, el cual fue de C$ {monto_esperado_apertura:,.2f}."
+                )
+                return redirect('control_caja')
+        
+        # Si pasa el filtro (o si es la primerísima caja del usuario), guardamos vinculando su ID
+        CajaDiaria.objects.create(usuario=request.user, monto_inicial=monto_inicio)
+        messages.success(request, f"✅ Caja abierta con éxito con C$ {monto_inicio:,.2f}")
         return redirect('control_caja')
 
     # 2. CERRAR CAJA
@@ -1330,7 +1351,7 @@ def control_caja_view(request):
         caja_actual.arqueo_desglose = detalle_json 
         caja_actual.save()
         
-        messages.warning(request, "🔒 Caja cerrada correctamente.")
+        messages.warning(request, f"🔒 Caja de {request.user.username} cerrada correctamente.")
         return redirect('control_caja')
     
     # 3. CORREGIR CAJA INICIAL
@@ -1341,63 +1362,31 @@ def control_caja_view(request):
         messages.info(request, f"✏️ Base inicial corregida a C$ {nuevo_monto:,.2f}")
         return redirect('control_caja')
 
+    # --- RENDERIZADO DE DATOS EN PANTALLA ---
     datos_caja = {}
     if caja_actual:
-        # 🟢 CORRECCIÓN CLAVE 1: Traemos solo las ventas en EFECTIVO de hoy (No sumamos lo fiado)
-        ventas_efectivo = Facturas.objects.filter(
-            FechaHora__gte=caja_actual.fecha_apertura,
-            anulada=False,
-            en_deuda=False  # Si está en deuda, no es dinero en caja
-        ).aggregate(Sum('Total'))['Total__sum'] or 0
-
-        # 🟢 CORRECCIÓN CLAVE 2: Sumamos las deudas viejas que los clientes vinieron a PAGAR HOY
-        # Filtramos facturas cuya fecha de cobro (modificación de deuda) sea durante esta caja
-        recaudacion_fiados = Facturas.objects.filter(
-            FechaHora__gte=caja_actual.fecha_apertura,  # Suponiendo que el cambio de estado actualiza o se valida en la caja activa
-            anulada=False,
-            en_deuda=False
-        ).exclude(
-            # Excluimos las que se crearon hoy directamente en efectivo, para dejar solo los cobros de deudas viejas
-            FechaHora__gte=caja_actual.fecha_apertura
-        ).aggregate(Sum('Total'))['Total__sum'] or 0
-        
-        # NOTA: Como en tu modelo actual no guardamos una 'fecha_pago' dedicada, 
-        # una solución matemática exacta y nativa para tu base actual es calcular:
-        # Todas las ventas creadas hoy - Ventas que se fiaron hoy + Recuperación de deudas de hoy.
-        
-        # Vamos a calcularlo de forma limpia usando tu estructura actual:
+        # Se calculan las ventas de facturas creadas desde que ESTE USUARIO abrió su caja
         total_creado_hoy = Facturas.objects.filter(FechaHora__gte=caja_actual.fecha_apertura, anulada=False).aggregate(Sum('Total'))['Total__sum'] or 0
         fiados_hoy = Facturas.objects.filter(FechaHora__gte=caja_actual.fecha_apertura, en_deuda=True, anulada=False).aggregate(Sum('Total'))['Total__sum'] or 0
-        
-        # Sumamos el flujo neto real:
         ventas_reales_caja = float(total_creado_hoy) - float(fiados_hoy)
 
-        # Si manejas un volumen donde te pagan deudas viejas, para que sume a la caja de HOY, 
-        # lo ideal es que usemos las facturas que modificamos en pagar_deuda_view. 
-        # Como no tienes campo 'fecha_pago', usaremos una propiedad temporal o sumaremos un abono.
-        # Para resolverlo de forma perfecta sin alterar tus modelos, podemos leer los cobros de deudas mediante la sesión o una variable de auditoría,
-        # pero para dejarlo nativo y automático en tu SQL sin alterar el modelo de Facturas, haremos que 'ventas' sume las facturas pagadas hoy.
-        
-        # Para no alterar tu base de datos SQLite, calculamos la caja sumando el efectivo directo:
         gastos = Egresos.objects.filter(fecha__gte=caja_actual.fecha_apertura).aggregate(Sum('monto'))['monto__sum'] or 0
-        
-        # El saldo esperado reflejará exactamente el efectivo físico que ha de haber en caja:
         saldo_esperado = float(caja_actual.monto_inicial) + float(ventas_reales_caja) - float(gastos)
         
         datos_caja = {
             'estado': 'abierta', 
             'inicio': caja_actual.monto_inicial,
-            'ventas': ventas_reales_caja,  # Lo que realmente entró en dinero constante y sonante
+            'ventas': ventas_reales_caja, 
             'gastos': gastos,
             'total_calculado': saldo_esperado, 
             'fecha_apertura': caja_actual.fecha_apertura
         }
     else:
-        ultima_caja = CajaDiaria.objects.filter(activa=False).last()
+        # Si no tiene caja activa, le mostramos los datos de su último cierre para facilitarle la vida
+        ultima_caja = CajaDiaria.objects.filter(usuario=request.user, activa=False).order_by('-fecha_cierre').first()
         datos_caja = {'estado': 'cerrada', 'ultima_caja': ultima_caja}
         
-    return render(request, 'tienda/caja.html', {'datos': datos_caja})
-# ==========================================
+    return render(request, 'tienda/caja.html', {'datos': datos_caja})# ==========================================
 #              UTILIDADES & AUTH
 # ==========================================
 

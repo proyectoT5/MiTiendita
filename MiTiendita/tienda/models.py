@@ -116,6 +116,7 @@ class Egresos(models.Model):
         return f"{self.concepto} - C$ {self.monto}"
 
 class CajaDiaria(models.Model):
+    usuario = models.ForeignKey(User, on_delete=models.CASCADE, related_name='cajas', null=True, blank=True)
     fecha_apertura = models.DateTimeField(auto_now_add=True)
     fecha_cierre = models.DateTimeField(null=True, blank=True)
     monto_inicial = models.DecimalField(max_digits=10, decimal_places=2)
@@ -125,7 +126,7 @@ class CajaDiaria(models.Model):
     arqueo_desglose = models.TextField(blank=True, null=True)
 
     def __str__(self):
-        return f"Caja {self.fecha_apertura}"
+        return f"Caja de {self.usuario.username if self.usuario else 'Sistema'} - {self.fecha_apertura}"
 
 class Facturas(models.Model):
     id_factura = models.AutoField(primary_key=True)
