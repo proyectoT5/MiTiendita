@@ -1,5 +1,4 @@
 @echo off
-
 :: Ruta base del proyecto
 set PROYECTO=C:\Users\Godoy\OneDrive\Desktop\MiTiendita\MiTiendita
 
@@ -10,7 +9,6 @@ set BACKUP=%PROYECTO%\backups
 if not exist "%BACKUP%" (
     mkdir "%BACKUP%"
 )
-
 :: Obtener fecha
 for /f %%i in ('powershell -Command "Get-Date -Format yyyy-MM-dd"') do set FECHA=%%i
 

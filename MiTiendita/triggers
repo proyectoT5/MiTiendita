@@ -1,25 +1,37 @@
-CREATE TRIGGER trg_descontar_stock
-AFTER INSERT ON DetalleFactura
+--INICIO TRIGGER ANULACIONES FACTURAS
+CREATE TRIGGER trg_factura_anulada
+AFTER UPDATE OF anulada ON tienda_facturas
+FOR EACH ROW
+WHEN OLD.anulada = 0 AND NEW.anulada = 1
 BEGIN
-    UPDATE Productos
-    SET Cantidad = Cantidad - NEW.Cantidad
-    WHERE Id_Producto = NEW.id_producto;
-END;
-    
-    
-CREATE TRIGGER trg_stock_no_negativo
-BEFORE UPDATE ON Productos
-WHEN NEW.Cantidad < 0
-BEGIN
-    SELECT RAISE(ABORT, 'Stock insuficiente');
+    INSERT INTO LogFacturasAnuladas (
+        id_factura,
+        fecha_anulacion,
+        total,
+        cliente_id
+    )
+    VALUES (
+        NEW.id_factura,
+        datetime('now'),
+        NEW.Total,
+        NEW.cliente_id
+    );
 END;
 
-CREATE TRIGGER trg_no_eliminar_cliente_con_facturas
-BEFORE DELETE ON Clientes
-WHEN EXISTS (
-    SELECT 1 FROM Facturas
-    WHERE id_cliente = OLD.id_cliente
-)
+
+--INICIO TRIGGER CAMBIO DE PRECIO DE PRODUCTOS
+CREATE TRIGGER trg_cambio_precio
+AFTER UPDATE ON Productos
+WHEN OLD.PrecioVenta <> NEW.PrecioVenta
 BEGIN
-    SELECT RAISE(ABORT, 'No se puede eliminar el cliente porque tiene facturas registradas');
-END;    
+    INSERT INTO HistorialPrecios(
+        producto_id,
+        precio_anterior,
+        precio_nuevo
+    )
+    VALUES(
+        NEW.Id_Producto,
+        OLD.PrecioVenta,
+        NEW.PrecioVenta
+    );
+END;
